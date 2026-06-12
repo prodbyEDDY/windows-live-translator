@@ -608,7 +608,19 @@ impl LiveController {
                         // Terminal — no further events will arrive.
                         break;
                     }
-                    SessionEvent::TurnComplete => {}
+                    SessionEvent::TurnComplete => {
+                        // Close the current transcript line for this direction.
+                        // The frontend treats kind "close" as "finalize the
+                        // in-progress line" (contract agreed with the UI).
+                        let _ = app.emit(
+                            "live:transcript",
+                            serde_json::json!({
+                                "direction": direction,
+                                "kind": "close",
+                                "text": "",
+                            }),
+                        );
+                    }
                 }
             }
         });

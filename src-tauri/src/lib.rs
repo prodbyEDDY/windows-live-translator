@@ -86,6 +86,7 @@ pub fn run() {
             ipc::voice_get,
             ipc::voice_export,
             ipc::history_list_calls,
+            ipc::history_get_call,
             ipc::history_list_voice,
             ipc::history_save_call,
             ipc::history_clear,

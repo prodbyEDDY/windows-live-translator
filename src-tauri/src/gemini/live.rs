@@ -225,9 +225,12 @@ async fn run_session(
                 },
                 frame = stream.next() => match frame {
                     Some(Ok(msg)) => {
-                        let payload: Vec<u8> = match msg {
-                            Message::Text(t) => t.as_bytes().to_vec(),
-                            Message::Binary(b) => b.to_vec(),
+                        // Borrow the frame bytes directly — no `to_vec()` copy.
+                        // The `Text`/`Binary` payloads live in `msg` for the
+                        // duration of this block, so a `&[u8]` slice suffices.
+                        let payload: &[u8] = match &msg {
+                            Message::Text(t) => t.as_bytes(),
+                            Message::Binary(b) => b.as_ref(),
                             Message::Close(_) => {
                                 attempt += 1;
                                 tracing::warn!(
@@ -240,7 +243,7 @@ async fn run_session(
                             }
                             _ => continue,
                         };
-                        let Some(parsed) = parse_server_message(&payload) else { continue };
+                        let Some(parsed) = parse_server_message(payload) else { continue };
                         if !connected {
                             connected = true;
                             attempt = 0;

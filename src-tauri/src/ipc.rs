@@ -603,6 +603,15 @@ pub fn history_list_calls(
         .map_err(|e| e.to_string())
 }
 
+/// Fetch a single call record by id, with the **full** transcript.
+///
+/// [`history_list_calls`] returns only a truncated transcript preview for the
+/// list view; this loads the complete transcript for the detail view.
+#[tauri::command]
+pub fn history_get_call(state: State<'_, AppState>, id: i64) -> Result<Option<CallRecord>, String> {
+    state.history.get_call(id).map_err(|e| e.to_string())
+}
+
 /// List voice records (newest first), optionally filtered by `search`.
 /// (Alias of [`voice_list`] kept for the History screen's naming symmetry.)
 #[tauri::command]

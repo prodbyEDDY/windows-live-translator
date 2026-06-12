@@ -62,6 +62,11 @@ const CHANNEL_CAPACITY: usize = 32;
 /// the stop flag, so [`CaptureHandle::stop`] joins promptly.
 const EVENT_TIMEOUT_MS: u32 = 200;
 
+/// How often the App-loopback watchdog checks that the target pid is still
+/// alive. Process loopback delivers silence (never an error) after the target
+/// process dies, so without this poll the source would never report lost.
+const PID_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// What to capture.
 #[derive(Debug, Clone)]
 pub enum CaptureSource {
@@ -165,7 +170,13 @@ fn capture_thread(
         Ok(stream) => {
             // Stream started — tell start_capture we're live, then run the loop.
             let _ = ready_tx.send(Ok(()));
-            capture_loop(stream, stop, &level_db_x100, &tx);
+            // The dead-app watchdog only applies to process-loopback of a single
+            // target pid; mic / system capture pass `None`.
+            let watch_pid = match source {
+                CaptureSource::App { pid } => Some(pid),
+                _ => None,
+            };
+            capture_loop(stream, stop, &level_db_x100, &tx, watch_pid);
         }
         Err(e) => {
             // Init failed — hand the error back; start_capture returns it.
@@ -286,19 +297,41 @@ fn setup_stream(source: &CaptureSource) -> anyhow::Result<Stream> {
 /// On a device error (e.g. unplug) this logs a warning and returns; returning
 /// drops `tx`, which disconnects the channel — the upstream's signal that the
 /// source died.
+///
+/// When `watch_pid` is `Some` (process loopback of a single target), a watchdog
+/// runs every [`PID_CHECK_INTERVAL`]: process loopback delivers silence forever
+/// (never an error) after the target process dies, so we poll [`pid_alive`] and,
+/// when the pid is gone, log a warning and break — returning drops `tx`, which
+/// disconnects the channel and drives the existing source-lost / auto-stop path.
 fn capture_loop(
     stream: Stream,
     stop: Arc<AtomicBool>,
     level_db_x100: &AtomicI32,
     tx: &Sender<Vec<f32>>,
+    watch_pid: Option<u32>,
 ) {
     // Raw interleaved bytes accumulate here between reads.
     let mut byte_queue: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
     // Scratch buffer reused across iterations to keep f32 conversion allocation
     // off the hot path where possible.
     let mut frame_bytes: Vec<u8> = Vec::new();
+    // Dead-app watchdog: last time we verified the target pid is alive.
+    let mut last_pid_check = std::time::Instant::now();
 
     'outer: while !stop.load(Ordering::Relaxed) {
+        // Dead-app watchdog (process loopback only): the target can exit without
+        // the loopback client ever erroring — it just streams silence. Poll the
+        // pid every PID_CHECK_INTERVAL and tear down once it's gone.
+        if let Some(pid) = watch_pid {
+            if last_pid_check.elapsed() >= PID_CHECK_INTERVAL {
+                last_pid_check = std::time::Instant::now();
+                if !pid_alive(pid) {
+                    tracing::warn!("capture: target pid {pid} is gone, stopping");
+                    break;
+                }
+            }
+        }
+
         // Wait for the engine to signal that a packet is ready. Timeout just
         // means "no data this interval" — loop so we re-check the stop flag.
         match stream.event.wait_for_event(EVENT_TIMEOUT_MS) {
@@ -356,6 +389,33 @@ fn capture_loop(
     let _ = stream.audio_client.stop_stream();
 }
 
+/// Return `true` if a process with `pid` currently exists.
+///
+/// Process loopback (`CaptureSource::App { pid }`) keeps delivering silence —
+/// never an error — after the target process dies, so the capture loop polls
+/// this to detect a dead source and tear down. Opens the process with the
+/// minimal `PROCESS_QUERY_LIMITED_INFORMATION` right and closes the handle
+/// immediately (same idiom as `devices::process_name_for_pid`).
+///
+/// A successful open proves the pid is live. A failure is treated as "not
+/// alive" — in the rare case the open is denied for an *existing* process the
+/// watchdog would tear down early, which is acceptable (the user can restart),
+/// and far preferable to streaming silence forever.
+fn pid_alive(pid: u32) -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    unsafe {
+        match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            Ok(handle) => {
+                let _ = CloseHandle(handle);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
+
 /// Reinterpret a little-endian f32 byte buffer as `Vec<f32>`. `bytes.len()` is
 /// assumed to be a multiple of 4 (whole frames of f32 samples).
 fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
@@ -369,6 +429,14 @@ fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pid_alive_detects_self_and_rejects_absurd() {
+        // Our own process is, by definition, alive.
+        assert!(pid_alive(std::process::id()));
+        // An absurdly high pid cannot exist on Windows (pids are far smaller).
+        assert!(!pid_alive(4_000_000_000));
+    }
 
     #[test]
     fn bytes_to_f32_roundtrips() {

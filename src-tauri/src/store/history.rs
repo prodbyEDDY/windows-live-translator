@@ -87,6 +87,10 @@ impl HistoryStore {
         // Enable WAL for better concurrent read behaviour (cosmetic for a
         // single-writer app, but good practice).
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        // With WAL, NORMAL synchronous is safe (a crash can only lose the last
+        // un-checkpointed transactions, never corrupt the db) and noticeably
+        // cheaper than the FULL default — fewer fsyncs per write.
+        conn.execute_batch("PRAGMA synchronous=NORMAL;")?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS calls (
@@ -142,17 +146,25 @@ impl HistoryStore {
     ///
     /// When `search` is `Some(s)`, only rows whose `transcript_json` contains
     /// `s` (case-insensitive LIKE) are returned.
+    ///
+    /// `transcript_json` is returned **truncated** to a preview-size prefix
+    /// (`substr(.., 1, 4000)`): the History list UI only ever shows the first
+    /// ≤90 chars, so shipping the full (potentially multi-MB) transcript for
+    /// every row is wasted I/O and memory. Use [`get_call`] to fetch the full
+    /// transcript for a single row when the detail view needs it.
     pub fn list_calls(&self, search: Option<&str>) -> anyhow::Result<Vec<CallRecord>> {
         let conn = self.conn.lock().unwrap();
         let (sql, like_pat) = match search {
             Some(s) => (
-                "SELECT id, started_at, my_lang, peer_lang, duration_secs, transcript_json
+                "SELECT id, started_at, my_lang, peer_lang, duration_secs,
+                        substr(transcript_json, 1, 4000) AS transcript_json
                  FROM calls WHERE transcript_json LIKE ?1 ESCAPE '\\'
                  ORDER BY id DESC",
                 Some(format!("%{}%", s.replace('%', "\\%").replace('_', "\\_"))),
             ),
             None => (
-                "SELECT id, started_at, my_lang, peer_lang, duration_secs, transcript_json
+                "SELECT id, started_at, my_lang, peer_lang, duration_secs,
+                        substr(transcript_json, 1, 4000) AS transcript_json
                  FROM calls ORDER BY id DESC",
                 None,
             ),
@@ -167,6 +179,19 @@ impl HistoryStore {
                 .collect::<Result<Vec<_>, _>>()?
         };
         Ok(rows)
+    }
+
+    /// Fetch a single call record by id, returning the **full** (untruncated)
+    /// `transcript_json`. The list view ([`list_calls`]) returns only a preview
+    /// prefix; the detail view uses this to load the complete transcript.
+    pub fn get_call(&self, id: i64) -> anyhow::Result<Option<CallRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, started_at, my_lang, peer_lang, duration_secs, transcript_json
+             FROM calls WHERE id = ?1",
+        )?;
+        let record = stmt.query_row(params![id], row_to_call).optional()?;
+        Ok(record)
     }
 
     // ── voice messages ──────────────────────────────────────────────────────
@@ -451,6 +476,32 @@ mod tests {
 
         let all = store.list_calls(Some("text")).unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn list_calls_truncates_get_call_returns_full() {
+        let (store, _dir) = open_temp();
+        // A transcript well over the 4000-char preview cap.
+        let big = "x".repeat(10_000);
+        let id = store.save_call("ru", "en", 7, &big).unwrap();
+
+        // list_calls returns a truncated preview (substr 1..4000).
+        let listed = store.list_calls(None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(
+            listed[0].transcript_json.len(),
+            4000,
+            "list preview must be truncated to 4000 chars"
+        );
+
+        // get_call returns the full row.
+        let full = store.get_call(id).unwrap().expect("record exists");
+        assert_eq!(full.id, id);
+        assert_eq!(full.transcript_json.len(), 10_000);
+        assert_eq!(full.transcript_json, big);
+
+        // get_call on a missing id is None.
+        assert!(store.get_call(999_999).unwrap().is_none());
     }
 
     // ── voice messages ────────────────────────────────────────────────────
