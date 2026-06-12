@@ -82,6 +82,9 @@ mod com {
         #[allow(dead_code)]
         pid: u32,
         original: f32,
+        /// The volume we actually set (`level.min(original)`) — the known
+        /// starting point for the restore ramp in `Drop`.
+        applied: f32,
     }
 
     /// RAII volume-ducking guard. Created on a thread with COM initialized;
@@ -110,7 +113,10 @@ mod com {
             let level = level.clamp(0.0, 1.0);
             let own_pid = std::process::id();
 
-            let entries = unsafe { collect_sessions(pid, own_pid)? };
+            let mut entries = unsafe { collect_sessions(pid, own_pid)? };
+            for e in &mut entries {
+                e.applied = level.min(e.original);
+            }
 
             // Persist originals BEFORE mutating anything.
             let restore: Vec<(u32, f32)> =
@@ -122,9 +128,8 @@ mod com {
             for step in 1..=RAMP_STEPS {
                 let frac = step as f32 / RAMP_STEPS as f32;
                 for e in &entries {
-                    let target = level.min(e.original);
-                    // Linear interpolate original → target over the ramp.
-                    let v = e.original + (target - e.original) * frac;
+                    // Linear interpolate original → applied over the ramp.
+                    let v = e.original + (e.applied - e.original) * frac;
                     unsafe {
                         let _ = e.vol.SetMasterVolume(v, std::ptr::null());
                     }
@@ -148,11 +153,9 @@ mod com {
             for step in 1..=RAMP_STEPS {
                 let frac = step as f32 / RAMP_STEPS as f32;
                 for e in &self.entries {
-                    // We ramp from the (possibly clamped) ducked value back to
-                    // original. We don't know the exact current value, but
-                    // interpolating original*frac from 0 toward original is
-                    // smooth enough and always ends exactly at `original`.
-                    let v = e.original * frac;
+                    // Ramp from the level we actually applied back up to the
+                    // original — no dip below the ducked floor.
+                    let v = e.applied + (e.original - e.applied) * frac;
                     unsafe {
                         let _ = e.vol.SetMasterVolume(v, std::ptr::null());
                     }
@@ -239,6 +242,7 @@ mod com {
                 vol,
                 pid: session_pid,
                 original,
+                applied: original, // overwritten with level.min(original) in duck()
             });
         }
 
