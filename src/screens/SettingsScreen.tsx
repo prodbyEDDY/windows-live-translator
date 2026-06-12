@@ -22,9 +22,6 @@ import {
   SwitchContent,
   SwitchControl,
   SwitchThumb,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
@@ -276,46 +273,41 @@ export function SettingsScreen() {
           )}
         </div>
 
-        {/* Mix original — disabled, coming soon */}
+        {/* Mix original voice under the translation */}
         <div className="flex flex-col gap-3">
-          <Tooltip>
-            <TooltipTrigger className="self-start">
-              <div className="flex items-center gap-2 opacity-50 cursor-not-allowed select-none">
-                <Switch isDisabled isSelected={settings.mixOriginal}>
-                  <SwitchControl>
-                    <SwitchThumb />
-                  </SwitchControl>
-                  <SwitchContent>{t("settings.translation.mixOriginal")}</SwitchContent>
-                </Switch>
-                <Chip color="default" size="sm">
-                  {t("settings.comingSoon")}
-                </Chip>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>{t("settings.comingSoon")}</TooltipContent>
-          </Tooltip>
-          <div className="ml-11 flex flex-col gap-1 opacity-50">
-            <label className="text-sm text-gray-600">
-              {t("settings.translation.mixGainDb")}: {formatDb(settings.mixGainDb)}
-            </label>
-            <Slider
-              isDisabled
-              value={[settings.mixGainDb]}
-              onChange={() => {
-                /* disabled — Stage 3 backend */
-              }}
-              minValue={-24}
-              maxValue={0}
-              step={1}
-              aria-label={t("settings.translation.mixGainDb")}
-            >
-              <SliderTrack>
-                <SliderFill />
-                <SliderThumb />
-              </SliderTrack>
-              <SliderOutput />
-            </Slider>
-          </div>
+          <Switch
+            isSelected={settings.mixOriginal}
+            onChange={(checked) => void patchSettings({ mixOriginal: checked })}
+          >
+            <SwitchControl>
+              <SwitchThumb />
+            </SwitchControl>
+            <SwitchContent>{t("settings.translation.mixOriginal")}</SwitchContent>
+          </Switch>
+          {settings.mixOriginal && (
+            <div className="ml-11 flex flex-col gap-1">
+              <label className="text-sm text-gray-600">
+                {t("settings.translation.mixGainDb")}: {formatDb(settings.mixGainDb)}
+              </label>
+              <Slider
+                value={[settings.mixGainDb]}
+                onChange={(vals) => {
+                  const v = Array.isArray(vals) ? vals[0] : vals;
+                  void patchSettings({ mixGainDb: v as number });
+                }}
+                minValue={-24}
+                maxValue={0}
+                step={1}
+                aria-label={t("settings.translation.mixGainDb")}
+              >
+                <SliderTrack>
+                  <SliderFill />
+                  <SliderThumb />
+                </SliderTrack>
+                <SliderOutput />
+              </Slider>
+            </div>
+          )}
         </div>
       </Card>
 

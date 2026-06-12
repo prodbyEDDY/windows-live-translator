@@ -46,6 +46,11 @@ export function buildTestConfig(settings: Settings): LiveConfig {
     echoTargetLanguage: settings.echoTargetLanguage,
     duckingEnabled: settings.duckingEnabled,
     duckLevel: settings.duckLevel,
+    // Test mode plays the translation into the user's own output device, so
+    // mixing the original voice would just double the user's own voice back at
+    // them — keep it off regardless of the saved setting.
+    mixOriginal: false,
+    mixGainDb: settings.mixGainDb,
     testMode: true,
   };
 }

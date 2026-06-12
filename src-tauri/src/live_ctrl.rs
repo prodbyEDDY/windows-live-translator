@@ -47,7 +47,7 @@ use crate::audio::capture::{start_capture, CaptureSource};
 use crate::audio::dsp::{f32_to_i16, Chunker, StreamResampler};
 use crate::audio::devices::cable_render_device_id;
 use crate::audio::ducking::DuckGuard;
-use crate::audio::playback::start_playback;
+use crate::audio::playback::{start_playback, start_playback_with_mix, MixConfig};
 use crate::gemini::live::{LiveSession, LiveSessionConfig, SessionEvent};
 
 /// Capture sample rate of the mic engine (mono f32, 48 kHz).
@@ -100,6 +100,12 @@ pub struct LiveConfig {
     pub echo_target_language: bool,
     pub ducking_enabled: bool,
     pub duck_level: f32,
+    /// Mix the original (mic) voice under the translated reply on the OUT
+    /// playback, so the peer hears both. Ignored in test mode.
+    pub mix_original: bool,
+    /// Gain (in dB, ≤ 0) applied to the original voice when mixing. Converted to
+    /// a linear multiplier (`10^(dB/20)`) before being handed to playback.
+    pub mix_gain_db: f32,
     /// Wizard test mode: OUT translation plays into the user's own output
     /// device (`output_id`) instead of the virtual cable, and the IN pipeline is
     /// skipped. Lets the user hear their own translated voice before a real call.
@@ -270,7 +276,19 @@ impl LiveController {
         })?;
 
         // 3. Start playback for the OUT translated reply (24 kHz mono PCM16 in).
-        let playback = start_playback(out_device, 24000)?;
+        //    When mixing the original voice (real mode only), create a bounded
+        //    channel carrying the mic's 48 kHz mono f32 blocks (the bed) and let
+        //    playback sum them under the translation at the configured gain. The
+        //    OUT bridge tees its captured blocks into `mix_tx` below.
+        let mix_original = cfg.mix_original && !cfg.test_mode;
+        let (mix_tx, mix) = if mix_original {
+            let (tx, rx) = crossbeam_channel::bounded::<Vec<f32>>(64);
+            let gain = 10f32.powf(cfg.mix_gain_db / 20.0);
+            (Some(tx), Some(MixConfig { rx, gain }))
+        } else {
+            (None, None)
+        };
+        let playback = start_playback_with_mix(out_device, 24000, mix)?;
 
         // 4. Spawn the OUT Gemini session from inside the tokio runtime.
         let (session, events) = tauri::async_runtime::block_on(async {
@@ -293,6 +311,7 @@ impl LiveController {
             mic.rx.clone(),
             session.clone(),
             "out",
+            mix_tx,
         );
 
         // 6. OUT session-events task: route audio to playback, transcripts/state
@@ -343,6 +362,7 @@ impl LiveController {
                 in_cap.rx.clone(),
                 sess_in.clone(),
                 "in",
+                None,
             );
 
             // 7e. IN session-events task.
@@ -408,6 +428,12 @@ impl LiveController {
 
     /// Spawn a capture → session bridge thread for `direction` ("in" | "out").
     /// Returns its join handle.
+    ///
+    /// When `mix_tx` is `Some` (OUT direction with original-voice mixing), each
+    /// captured 48 kHz mono f32 block is also tee'd into that channel — the bed
+    /// for the OUT playback's mixer — *before* the resample-to-16 kHz path that
+    /// feeds Gemini. The send is non-blocking: on backpressure the block is
+    /// dropped so the bridge never stalls the capture path.
     fn spawn_bridge(
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
@@ -415,6 +441,7 @@ impl LiveController {
         rx: crossbeam_channel::Receiver<Vec<f32>>,
         session: LiveSession,
         direction: &'static str,
+        mix_tx: Option<crossbeam_channel::Sender<Vec<f32>>>,
     ) -> std::thread::JoinHandle<()> {
         std::thread::Builder::new()
             .name(format!("{direction}-bridge"))
@@ -425,6 +452,11 @@ impl LiveController {
                 while !stop_flag.load(Ordering::Relaxed) {
                     match rx.recv_timeout(BRIDGE_RECV_TIMEOUT) {
                         Ok(block) => {
+                            // Tee the raw 48 kHz mono block to the mixer bed.
+                            // Drop on backpressure — playback must never stall us.
+                            if let Some(ref tx) = mix_tx {
+                                let _ = tx.try_send(block.clone());
+                            }
                             let down = resampler.push(&block);
                             if down.is_empty() {
                                 continue;

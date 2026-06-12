@@ -29,7 +29,6 @@
     "title": "Live Translator"
   },
   "settings": {
-    "comingSoon": "Скоро",
     "sections": {
       "apiKey": "API-ключ",
       "audio": "Аудио",

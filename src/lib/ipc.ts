@@ -49,6 +49,8 @@ export interface LiveConfig {
   echoTargetLanguage: boolean;
   duckingEnabled: boolean;
   duckLevel: number;
+  mixOriginal: boolean;
+  mixGainDb: number;
   testMode: boolean;
 }
 

@@ -61,6 +61,27 @@ const EVENT_TIMEOUT_MS: u32 = 200;
 /// playing (and re-armed whenever the FIFO drains to empty mid-stream).
 const PREBUFFER_SAMPLES: usize = RENDER_RATE * 150 / 1000;
 
+/// Cap on the mix-bed (original-voice) ring buffer: ~500 ms of 48 kHz mono
+/// audio. The bed is fed by `try_recv` and pulled one sample per output frame;
+/// if the producer outruns the render clock we drop the oldest samples to bound
+/// latency rather than let the buffer grow unboundedly.
+const MIX_BED_CAP_SAMPLES: usize = RENDER_RATE * 500 / 1000;
+
+/// Configuration for mixing the original voice (the "bed") under the translated
+/// reply during playback.
+///
+/// The bed is **mono 48 kHz f32** — already at [`RENDER_RATE`], so no resampling
+/// happens in the render loop. `gain` is a linear multiplier (e.g. `10^(dB/20)`)
+/// applied per sample before summing with the translation and clamping to ±1.0.
+pub struct MixConfig {
+    /// Source of the bed: bursts of mono 48 kHz f32 samples. Drained via
+    /// `try_recv` each tick; backpressure on the producer side is the caller's
+    /// concern (it should drop, not block).
+    pub rx: Receiver<Vec<f32>>,
+    /// Linear gain applied to each bed sample before summing.
+    pub gain: f32,
+}
+
 /// Handle to a running playback stream.
 ///
 /// Dropping the handle signals the render thread to stop (without joining);
@@ -108,6 +129,22 @@ impl Drop for PlaybackHandle {
 /// initialization failed (returning the error). The thread is never left
 /// running silently on failure.
 pub fn start_playback(device_id: Option<String>, src_rate: usize) -> anyhow::Result<PlaybackHandle> {
+    start_playback_with_mix(device_id, src_rate, None)
+}
+
+/// Start playback to `device_id`, optionally mixing an original-voice bed under
+/// the translated reply.
+///
+/// Identical to [`start_playback`] but, when `mix` is `Some`, the render loop
+/// pulls mono 48 kHz f32 samples from [`MixConfig::rx`] and sums them (scaled by
+/// [`MixConfig::gain`]) under every output frame — including the silence /
+/// prebuffer frames, so the original voice keeps flowing even when no
+/// translation is playing. See [`render_loop`] for the buffering details.
+pub fn start_playback_with_mix(
+    device_id: Option<String>,
+    src_rate: usize,
+    mix: Option<MixConfig>,
+) -> anyhow::Result<PlaybackHandle> {
     let stop = Arc::new(AtomicBool::new(false));
     let queued_samples = Arc::new(AtomicUsize::new(0));
     let (tx, rx) = bounded::<Vec<i16>>(CHANNEL_CAPACITY);
@@ -121,7 +158,7 @@ pub fn start_playback(device_id: Option<String>, src_rate: usize) -> anyhow::Res
     let join = std::thread::Builder::new()
         .name("audio-render".to_string())
         .spawn(move || {
-            render_thread(device_id, src_rate, thread_stop, thread_queued, rx, ready_tx);
+            render_thread(device_id, src_rate, thread_stop, thread_queued, rx, ready_tx, mix);
         })?;
 
     // Block until the thread reports readiness. A disconnect (thread panicked
@@ -149,6 +186,7 @@ pub fn start_playback(device_id: Option<String>, src_rate: usize) -> anyhow::Res
 /// Body of the `audio-render` thread. Sends its init result over `ready_tx`
 /// exactly once, then (on success) runs the render loop until `stop` is set or
 /// the device errors out.
+#[allow(clippy::too_many_arguments)]
 fn render_thread(
     device_id: Option<String>,
     src_rate: usize,
@@ -156,11 +194,12 @@ fn render_thread(
     queued_samples: Arc<AtomicUsize>,
     rx: Receiver<Vec<i16>>,
     ready_tx: Sender<anyhow::Result<()>>,
+    mix: Option<MixConfig>,
 ) {
     match setup_stream(device_id) {
         Ok(stream) => {
             let _ = ready_tx.send(Ok(()));
-            render_loop(stream, src_rate, stop, &queued_samples, &rx);
+            render_loop(stream, src_rate, stop, &queued_samples, &rx, mix);
         }
         Err(e) => {
             let _ = ready_tx.send(Err(e));
@@ -252,6 +291,7 @@ fn render_loop(
     stop: Arc<AtomicBool>,
     queued_samples: &AtomicUsize,
     rx: &Receiver<Vec<i16>>,
+    mix: Option<MixConfig>,
 ) {
     // One resampler instance for the life of the thread keeps its streaming
     // state continuous across bursts (no clicks at burst boundaries).
@@ -260,6 +300,13 @@ fn render_loop(
     let mut fifo: VecDeque<f32> = VecDeque::new();
     // Reused scratch for the interleaved stereo byte buffer handed to WASAPI.
     let mut byte_buf: Vec<u8> = Vec::new();
+
+    // Mix bed (original voice): a local ring fed by `mix.rx`. Already mono
+    // 48 kHz, so it needs no resampling — we pop one sample per output frame.
+    // Capped at MIX_BED_CAP_SAMPLES (~500 ms); when the producer outruns the
+    // render clock we drop the oldest samples to bound added latency.
+    let mut bed: VecDeque<f32> = VecDeque::new();
+    let bed_gain = mix.as_ref().map(|m| m.gain).unwrap_or(0.0);
 
     // `started` gates the prebuffer: false means we're filling the jitter
     // buffer (writing silence to the device) until the FIFO reaches
@@ -283,6 +330,18 @@ fn render_loop(
             fifo.extend(resampled);
         }
         queued_samples.store(fifo.len(), Ordering::Relaxed);
+
+        // --- ingest the mix bed (original voice), if mixing is enabled ---
+        // Already mono 48 kHz f32, so it goes straight into the ring. Keep only
+        // the most recent ~500 ms (drop-oldest) to bound the added latency.
+        if let Some(ref m) = mix {
+            while let Ok(block) = m.rx.try_recv() {
+                bed.extend(block);
+            }
+            while bed.len() > MIX_BED_CAP_SAMPLES {
+                bed.pop_front();
+            }
+        }
 
         // (Re-)arm the prebuffer once enough audio has accumulated. While not
         // started we keep feeding silence below so the engine never underruns.
@@ -321,12 +380,17 @@ fn render_loop(
         byte_buf.clear();
         byte_buf.reserve(writable * BYTES_PER_FRAME);
         for _ in 0..writable {
-            // Underrun (or pre-start) → 0.0 silence for this frame.
-            let sample = if started {
+            // Underrun (or pre-start) → 0.0 silence for the translation.
+            let base = if started {
                 fifo.pop_front().unwrap_or(0.0)
             } else {
                 0.0
             };
+            // Mix the original voice under EVERY frame, including silence /
+            // prebuffer frames, so the original keeps flowing even when no
+            // translation is playing. When mixing is disabled the bed is always
+            // empty, so this returns `base` unchanged.
+            let sample = mix_sample(base, &mut bed, bed_gain);
             let bytes = sample.to_le_bytes();
             // Duplicate the mono sample to both stereo channels.
             byte_buf.extend_from_slice(&bytes);
@@ -350,6 +414,19 @@ fn render_loop(
     }
 
     let _ = stream.audio_client.stop_stream();
+}
+
+/// Mix one bed sample (original voice) under one base sample (translation).
+///
+/// Pops the next bed sample from `bed` (0.0 when the bed is empty — silence so
+/// the base flows through untouched), scales it by `gain`, sums it with `base`,
+/// and clamps the result to the valid f32 PCM range `[-1.0, 1.0]` to avoid
+/// wrap-around / hard clipping artifacts on overflow.
+///
+/// Pure so the mixing math is unit-testable without audio hardware.
+fn mix_sample(base: f32, bed: &mut VecDeque<f32>, gain: f32) -> f32 {
+    let bed_sample = bed.pop_front().unwrap_or(0.0);
+    (base + gain * bed_sample).clamp(-1.0, 1.0)
 }
 
 /// Interleave a mono f32 slice into stereo little-endian bytes by duplicating
@@ -405,6 +482,55 @@ mod tests {
         // 150 ms of 48 kHz == 7200 samples. Guards the constant against
         // accidental edits.
         assert_eq!(PREBUFFER_SAMPLES, 7200);
+    }
+
+    #[test]
+    fn mix_bed_cap_is_500ms_at_render_rate() {
+        // 500 ms of 48 kHz == 24000 samples. Guards the constant.
+        assert_eq!(MIX_BED_CAP_SAMPLES, 24000);
+    }
+
+    #[test]
+    fn mix_sample_empty_bed_returns_base() {
+        // An empty bed contributes silence: the base passes through untouched,
+        // even at unity gain.
+        let mut bed: VecDeque<f32> = VecDeque::new();
+        assert_eq!(mix_sample(0.5, &mut bed, 1.0), 0.5);
+        assert_eq!(mix_sample(-0.25, &mut bed, 0.5), -0.25);
+        assert_eq!(mix_sample(0.0, &mut bed, 1.0), 0.0);
+    }
+
+    #[test]
+    fn mix_sample_applies_gain() {
+        // bed sample is scaled by gain before summing, and consumed (popped).
+        let mut bed: VecDeque<f32> = VecDeque::from(vec![0.4, 0.2]);
+        // 0.1 + 0.5 * 0.4 = 0.3
+        assert!((mix_sample(0.1, &mut bed, 0.5) - 0.3).abs() < 1e-6);
+        // next call pops the second sample: 0.0 + 0.5 * 0.2 = 0.1
+        assert!((mix_sample(0.0, &mut bed, 0.5) - 0.1).abs() < 1e-6);
+        // bed now empty → base passes through.
+        assert_eq!(mix_sample(0.7, &mut bed, 0.5), 0.7);
+    }
+
+    #[test]
+    fn mix_sample_zero_gain_is_base() {
+        // Zero gain mutes the bed entirely (but still consumes the sample).
+        let mut bed: VecDeque<f32> = VecDeque::from(vec![1.0]);
+        assert_eq!(mix_sample(0.3, &mut bed, 0.0), 0.3);
+        assert!(bed.is_empty(), "bed sample should still be consumed");
+    }
+
+    #[test]
+    fn mix_sample_clamps_to_unit_range() {
+        // Positive overflow clamps to +1.0.
+        let mut bed: VecDeque<f32> = VecDeque::from(vec![1.0]);
+        assert_eq!(mix_sample(0.8, &mut bed, 1.0), 1.0);
+        // Negative overflow clamps to -1.0.
+        let mut bed: VecDeque<f32> = VecDeque::from(vec![-1.0]);
+        assert_eq!(mix_sample(-0.8, &mut bed, 1.0), -1.0);
+        // Exactly at the boundary is preserved.
+        let mut bed: VecDeque<f32> = VecDeque::from(vec![0.5]);
+        assert_eq!(mix_sample(0.5, &mut bed, 1.0), 1.0);
     }
 
     #[test]

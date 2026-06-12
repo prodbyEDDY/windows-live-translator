@@ -123,6 +123,8 @@ export function LiveScreen() {
       echoTargetLanguage: settings.echoTargetLanguage,
       duckingEnabled: settings.duckingEnabled,
       duckLevel: settings.duckLevel,
+      mixOriginal: settings.mixOriginal,
+      mixGainDb: settings.mixGainDb,
       testMode: false,
     };
     await startLive(cfg);
