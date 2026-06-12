@@ -34,6 +34,7 @@ export interface Settings {
   duckLevel: number;
   mixOriginal: boolean;
   mixGainDb: number;
+  vadEconomy: boolean;
   uiLang: string;
   wizardDone: boolean;
   ttsVoice: string;
@@ -51,6 +52,7 @@ export interface LiveConfig {
   duckLevel: number;
   mixOriginal: boolean;
   mixGainDb: number;
+  vadEconomy: boolean;
   testMode: boolean;
 }
 

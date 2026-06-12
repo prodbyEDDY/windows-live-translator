@@ -125,6 +125,7 @@ export function LiveScreen() {
       duckLevel: settings.duckLevel,
       mixOriginal: settings.mixOriginal,
       mixGainDb: settings.mixGainDb,
+      vadEconomy: settings.vadEconomy,
       testMode: false,
     };
     await startLive(cfg);

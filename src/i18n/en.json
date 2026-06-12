@@ -60,7 +60,9 @@
       "duckingEnabled": "Ducking",
       "duckLevel": "Duck level",
       "mixOriginal": "Mix original",
-      "mixGainDb": "Original gain"
+      "mixGainDb": "Original gain",
+      "vadEconomy": "Silence economy (VAD)",
+      "vadEconomyHint": "Doesn't send silence to Gemini — saves up to ~50%, but may clip the very start of a phrase"
     },
     "app": {
       "uiLang": "Interface language",

@@ -51,6 +51,9 @@ export function buildTestConfig(settings: Settings): LiveConfig {
     // them — keep it off regardless of the saved setting.
     mixOriginal: false,
     mixGainDb: settings.mixGainDb,
+    // VAD economy is a steady-state cost optimisation; keep the test (a short
+    // "say a phrase" check) on the full stream so nothing is clipped.
+    vadEconomy: false,
     testMode: true,
   };
 }

@@ -21,6 +21,10 @@ pub struct Settings {
     pub duck_level: f32,
     pub mix_original: bool,
     pub mix_gain_db: f32,
+    /// VAD economy mode: skip streaming silence to Gemini (default off). The
+    /// serde `default` on the struct means an older settings.json without this
+    /// key still loads (it falls back to `false`).
+    pub vad_economy: bool,
     pub ui_lang: String,
     pub wizard_done: bool,
     pub tts_voice: String,
@@ -35,6 +39,7 @@ impl Default for Settings {
             echo_target_language: false,
             ducking_enabled: true, duck_level: 0.2,
             mix_original: false, mix_gain_db: -12.0,
+            vad_economy: false,
             ui_lang: "ru".into(), wizard_done: false,
             tts_voice: "Kore".into(),
         }
@@ -138,6 +143,21 @@ mod tests {
         assert!((s.duck_level - 0.2).abs() < f32::EPSILON);
         assert!(!s.echo_target_language);
         assert!(!s.wizard_done);
+        assert!(!s.mix_original);
+        // VAD economy is opt-in, default off.
+        assert!(!s.vad_economy);
+    }
+
+    /// An older settings.json predating `vadEconomy` must still load, with the
+    /// missing field defaulting to `false` (serde `default` on the struct).
+    #[test]
+    fn load_tolerates_missing_vad_economy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"myLang": "en", "peerLang": "ru"}"#).unwrap();
+        let store = SettingsStore::open(path).unwrap();
+        assert_eq!(store.get().my_lang, "en");
+        assert!(!store.get().vad_economy);
     }
 
     #[test]

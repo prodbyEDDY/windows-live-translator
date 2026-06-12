@@ -48,6 +48,7 @@ use crate::audio::dsp::{f32_to_i16, Chunker, StreamResampler};
 use crate::audio::devices::cable_render_device_id;
 use crate::audio::ducking::DuckGuard;
 use crate::audio::playback::{start_playback, start_playback_with_mix, MixConfig};
+use crate::audio::vad::{EnergyVad, VadDecision};
 use crate::gemini::live::{LiveSession, LiveSessionConfig, SessionEvent};
 
 /// Capture sample rate of the mic engine (mono f32, 48 kHz).
@@ -56,6 +57,10 @@ const CAPTURE_RATE: usize = 48000;
 const SEND_RATE: usize = 16000;
 /// Chunk size handed to the session: 100 ms of 16 kHz PCM16.
 const SEND_CHUNK: usize = SEND_RATE / 10;
+/// VAD economy pre-roll: how many trailing send-chunks to retain while silent
+/// and flush on resume. 3 × 100 ms = ~300 ms of context before the new phrase,
+/// so the first word isn't clipped when speech restarts.
+const VAD_PREROLL_CHUNKS: usize = 3;
 /// How long the bridge thread blocks on a capture block before re-checking `stop`.
 const BRIDGE_RECV_TIMEOUT: Duration = Duration::from_millis(200);
 /// Level-meter tick interval.
@@ -106,6 +111,11 @@ pub struct LiveConfig {
     /// Gain (in dB, ≤ 0) applied to the original voice when mixing. Converted to
     /// a linear multiplier (`10^(dB/20)`) before being handed to playback.
     pub mix_gain_db: f32,
+    /// VAD economy mode: when set, each bridge runs an energy VAD over the raw
+    /// 48 kHz blocks and stops streaming silence to Gemini (with a short
+    /// pre-roll flushed on resume). Saves session minutes at the cost of
+    /// occasionally clipping the very start of a phrase.
+    pub vad_economy: bool,
     /// Wizard test mode: OUT translation plays into the user's own output
     /// device (`output_id`) instead of the virtual cable, and the IN pipeline is
     /// skipped. Lets the user hear their own translated voice before a real call.
@@ -218,6 +228,16 @@ fn emit_state(app: &AppHandle, state: &Arc<Mutex<SessState>>, set: impl FnOnce(&
     let _ = app.emit("live:state", state_value(&snapshot));
 }
 
+/// Audio-routing options for a capture → session bridge, grouped to keep
+/// [`LiveController::spawn_bridge`]'s signature small.
+struct BridgeOpts {
+    /// `Some` on the OUT direction when mixing the original voice: each raw
+    /// 48 kHz block is tee'd here (drop on backpressure) as the mixer bed.
+    mix_tx: Option<crossbeam_channel::Sender<Vec<f32>>>,
+    /// When set, run the energy VAD and stop streaming silence (with pre-roll).
+    vad_economy: bool,
+}
+
 /// A running live session. Drop or [`stop`](LiveController::stop) to tear down.
 pub struct LiveController {
     /// Set to signal every owned thread/task to wind down.
@@ -311,7 +331,7 @@ impl LiveController {
             mic.rx.clone(),
             session.clone(),
             "out",
-            mix_tx,
+            BridgeOpts { mix_tx, vad_economy: cfg.vad_economy },
         );
 
         // 6. OUT session-events task: route audio to playback, transcripts/state
@@ -362,7 +382,7 @@ impl LiveController {
                 in_cap.rx.clone(),
                 sess_in.clone(),
                 "in",
-                None,
+                BridgeOpts { mix_tx: None, vad_economy: cfg.vad_economy },
             );
 
             // 7e. IN session-events task.
@@ -434,6 +454,14 @@ impl LiveController {
     /// for the OUT playback's mixer — *before* the resample-to-16 kHz path that
     /// feeds Gemini. The send is non-blocking: on backpressure the block is
     /// dropped so the bridge never stalls the capture path.
+    ///
+    /// When `vad_economy` is set, an [`EnergyVad`] runs over each raw 48 kHz
+    /// block *before* resampling. The resampler/chunker are *always* driven
+    /// (so resampler continuity is preserved across silent stretches), but the
+    /// resulting chunks are only streamed on speech. While silent, chunks are
+    /// pushed into a small pre-roll ring (`VAD_PREROLL_CHUNKS`, drop-oldest);
+    /// on the first speech block (`JustResumed`) the ring is flushed first so
+    /// the start of the phrase isn't clipped.
     fn spawn_bridge(
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
@@ -441,13 +469,18 @@ impl LiveController {
         rx: crossbeam_channel::Receiver<Vec<f32>>,
         session: LiveSession,
         direction: &'static str,
-        mix_tx: Option<crossbeam_channel::Sender<Vec<f32>>>,
+        opts: BridgeOpts,
     ) -> std::thread::JoinHandle<()> {
+        let BridgeOpts { mix_tx, vad_economy } = opts;
         std::thread::Builder::new()
             .name(format!("{direction}-bridge"))
             .spawn(move || {
                 let mut resampler = StreamResampler::new(CAPTURE_RATE, SEND_RATE);
                 let mut chunker = Chunker::new(SEND_CHUNK);
+                // VAD state (only used when economy mode is on).
+                let mut vad = EnergyVad::new();
+                let mut preroll: std::collections::VecDeque<Vec<i16>> =
+                    std::collections::VecDeque::with_capacity(VAD_PREROLL_CHUNKS);
 
                 while !stop_flag.load(Ordering::Relaxed) {
                     match rx.recv_timeout(BRIDGE_RECV_TIMEOUT) {
@@ -457,13 +490,46 @@ impl LiveController {
                             if let Some(ref tx) = mix_tx {
                                 let _ = tx.try_send(block.clone());
                             }
+                            // Classify the raw block before resampling.
+                            let decision = if vad_economy {
+                                vad.push(&block)
+                            } else {
+                                VadDecision::Speech
+                            };
                             let down = resampler.push(&block);
                             if down.is_empty() {
                                 continue;
                             }
                             let pcm16 = f32_to_i16(&down);
-                            for chunk in chunker.push(&pcm16) {
-                                session.blocking_send_audio(chunk);
+                            // Always drive the chunker (resampler/chunker
+                            // continuity) regardless of the VAD decision.
+                            let chunks = chunker.push(&pcm16);
+                            match decision {
+                                VadDecision::JustResumed => {
+                                    // Flush the pre-roll first, then send the
+                                    // current chunks.
+                                    for c in preroll.drain(..) {
+                                        session.blocking_send_audio(c);
+                                    }
+                                    for chunk in chunks {
+                                        session.blocking_send_audio(chunk);
+                                    }
+                                }
+                                VadDecision::Speech => {
+                                    for chunk in chunks {
+                                        session.blocking_send_audio(chunk);
+                                    }
+                                }
+                                VadDecision::Silence => {
+                                    // Don't stream silence; retain a short
+                                    // pre-roll (drop-oldest) for the next resume.
+                                    for chunk in chunks {
+                                        if preroll.len() == VAD_PREROLL_CHUNKS {
+                                            preroll.pop_front();
+                                        }
+                                        preroll.push_back(chunk);
+                                    }
+                                }
                             }
                         }
                         Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,

@@ -309,6 +309,22 @@ export function SettingsScreen() {
             </div>
           )}
         </div>
+
+        {/* VAD economy: pause streaming on silence */}
+        <div className="flex flex-col gap-1">
+          <Switch
+            isSelected={settings.vadEconomy}
+            onChange={(checked) => void patchSettings({ vadEconomy: checked })}
+          >
+            <SwitchControl>
+              <SwitchThumb />
+            </SwitchControl>
+            <SwitchContent>{t("settings.translation.vadEconomy")}</SwitchContent>
+          </Switch>
+          <p className="text-xs text-gray-500 ml-11">
+            {t("settings.translation.vadEconomyHint")}
+          </p>
+        </div>
       </Card>
 
       {/* ---- Section 4: App ---- */}

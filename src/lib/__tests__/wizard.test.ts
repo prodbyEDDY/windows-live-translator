@@ -47,6 +47,7 @@ describe("buildTestConfig", () => {
     duckLevel: 40,
     mixOriginal: false,
     mixGainDb: -6,
+    vadEconomy: true,
     uiLang: "ru",
     wizardDone: false,
     ttsVoice: "Puck",
@@ -57,6 +58,11 @@ describe("buildTestConfig", () => {
     expect(cfg.testMode).toBe(true);
     expect(cfg.captureMode).toBe("system");
     expect(cfg.appPid).toBeNull();
+  });
+
+  it("keeps VAD economy off in test mode regardless of the saved setting", () => {
+    const cfg = buildTestConfig(base);
+    expect(cfg.vadEconomy).toBe(false);
   });
 
   it("carries through language and device settings", () => {
