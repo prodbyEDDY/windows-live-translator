@@ -67,5 +67,39 @@
       "uiLang": "Язык интерфейса",
       "version": "Версия"
     }
+  },
+  "live": {
+    "myLang": "Мой язык",
+    "peerLang": "Язык собеседника",
+    "swapLangs": "Поменять языки",
+    "audioSource": "Источник звука собеседника",
+    "systemAudio": "Весь звук системы",
+    "transcriptEmpty": "Транскрипт появится здесь после начала сессии",
+    "scrollDown": "Прокрутить вниз",
+    "clearTranscript": "Очистить",
+    "alertNoKey": "API-ключ не задан или недействителен",
+    "alertNoKeyDesc": "Добавьте API-ключ Gemini для начала перевода.",
+    "alertGoSettings": "В настройки",
+    "alertNoCable": "VB-CABLE не найден",
+    "alertNoCableDesc": "Для работы перевода необходимо виртуальное аудиоустройство VB-CABLE.",
+    "alertEcho": "Возможно эхо",
+    "alertEchoDesc": "Выбранное устройство вывода не похоже на наушники. Использование динамиков может вызвать эхо.",
+    "startBlockedNoKey": "Сначала добавьте API-ключ",
+    "startBlockedNoCable": "Требуется VB-CABLE",
+    "startBlockedNoApp": "Выберите приложение для захвата",
+    "sessionOut": "Вы →",
+    "sessionIn": "→ Вам",
+    "sessionOff": "выкл",
+    "sessionConnecting": "подключение",
+    "sessionRunning": "работает",
+    "sessionReconnecting": "переподключение",
+    "levelMic": "Мик",
+    "levelApp": "Прил",
+    "error": {
+      "noApiKey": "Добавьте API-ключ в настройках",
+      "alreadyRunning": "Перевод уже запущен",
+      "cableMissing": "VB-CABLE не найден — запустите мастер настройки",
+      "noAppSelected": "Сначала выберите приложение для захвата"
+    }
   }
 }

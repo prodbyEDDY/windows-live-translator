@@ -67,5 +67,39 @@
       "uiLang": "Interface language",
       "version": "Version"
     }
+  },
+  "live": {
+    "myLang": "My language",
+    "peerLang": "Peer language",
+    "swapLangs": "Swap languages",
+    "audioSource": "Peer audio source",
+    "systemAudio": "Entire system audio",
+    "transcriptEmpty": "Transcript will appear here once the session starts",
+    "scrollDown": "Scroll to bottom",
+    "clearTranscript": "Clear",
+    "alertNoKey": "API key missing or invalid",
+    "alertNoKeyDesc": "Add a Gemini API key to start translation.",
+    "alertGoSettings": "Go to Settings",
+    "alertNoCable": "VB-CABLE not found",
+    "alertNoCableDesc": "VB-CABLE virtual audio device is required for live translation.",
+    "alertEcho": "Output device may cause echo",
+    "alertEchoDesc": "The selected output device does not look like headphones. Using speakers may cause echo.",
+    "startBlockedNoKey": "Add an API key first",
+    "startBlockedNoCable": "VB-CABLE is required",
+    "startBlockedNoApp": "Select an app to capture",
+    "sessionOut": "You →",
+    "sessionIn": "→ You",
+    "sessionOff": "off",
+    "sessionConnecting": "connecting",
+    "sessionRunning": "running",
+    "sessionReconnecting": "reconnecting",
+    "levelMic": "Mic",
+    "levelApp": "App",
+    "error": {
+      "noApiKey": "Add an API key in Settings",
+      "alreadyRunning": "Translation is already running",
+      "cableMissing": "VB-CABLE not found — run Setup Wizard",
+      "noAppSelected": "Select an app to capture first"
+    }
   }
 }
