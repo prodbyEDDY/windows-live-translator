@@ -1,8 +1,9 @@
-# Stage 1 E2E checklist
+# Stage 1 & 2 E2E checklist
 
-Manual end-to-end verification of the Stage-1 live-translation MVP. Each line is
-a checkbox to be executed by the user/dev on a real machine with real calls —
-these cases require audio hardware, a virtual cable, and a remote peer, so they
+Manual end-to-end verification of the live-translation MVP (Stage 1: live
+calls; Stage 2: voice messages + history). Each line is a checkbox to be
+executed by the user/dev on a real machine — these cases require audio
+hardware, a virtual cable, a remote peer, and the WhatsApp desktop app, so they
 cannot be automated in CI.
 
 ## Prerequisites
@@ -19,8 +20,11 @@ cannot be automated in CI.
 - [ ] **Zoom test meeting or a second device** — either the Zoom test meeting
   (`zoom.us/test`) or a second device / second account to act as the remote peer
   on a real call.
+- [ ] **WhatsApp desktop** (Stage 2) — the WhatsApp desktop app signed in, plus
+  a real `.opus`/`.ogg` voice note in a chat to drop into the app, and a chat to
+  drag translated audio back into.
 
-## Checklist
+## Stage 1 checklist
 
 - [ ] Wizard from clean state (no key, no cable) completes; Zoom shows "CABLE Output" as mic
 - [ ] Zoom test call (zoom.us test meeting or second device): peer hears translated speech, not original
@@ -31,3 +35,23 @@ cannot be automated in CI.
 - [ ] Kill app (taskkill) while ducking active; relaunch: ducked app volume restored on startup
 - [ ] Invalid API key: clear error, Start disabled; fixing key in Settings re-enables without restart
 - [ ] All UI strings render in both ru and en
+
+## Stage 2 checklist — voice messages
+
+- [ ] Drop a WhatsApp `.opus` voice note onto the Voice screen drop-zone → card appears; transcript **and** translation populate; stage chip ends on "done"
+- [ ] Drop a non-audio file (e.g. `.txt`/`.png`) → rejected with a friendly toast, no card created
+- [ ] Record → translated "out" card appears with original + translated audio players, both play
+- [ ] Drag the translated `.ogg` from the card's drag handle into a WhatsApp chat → lands as an **audio attachment** and plays (drag shows the bundled audio thumbnail, not just a filename)
+- [ ] «Сохранить как» on an "out" card opens the save dialog and writes the `.ogg` to the chosen path
+- [ ] Voice progress stages update **live** (pending → transcribing → synthesizing → done) without a refresh
+- [ ] Force an error (disconnect network), then "Повторить" / retry succeeds once reconnected
+- [ ] 5-minute record cap enforced: recording auto-stops at the cap
+- [ ] Too-short recording (<1s) rejected with a friendly message, no broken card
+
+## Stage 2 checklist — history
+
+- [ ] After a live call ends (Stop), a call transcript row is saved to history
+- [ ] History survives an app restart: close and relaunch → previous calls and voice messages still listed
+- [ ] History search finds rows by transcript/translation text
+- [ ] «Очистить историю» (confirm) wipes all rows **and** deletes files under `%APPDATA%/com.livetranslator.app/voice`
+- [ ] All Stage-2 UI strings render in both ru and en

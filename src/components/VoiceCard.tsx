@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Button,
@@ -9,9 +9,22 @@ import {
   TooltipTrigger,
 } from "@heroui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { resolveResource } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ipc, type VoiceRecord } from "../lib/ipc";
+
+// Bundled drag thumbnail (64x64 PNG). Declared in tauri.conf.json
+// `bundle.resources`; resolved to a filesystem path at runtime because the
+// drag plugin needs a real path, not an asset URL. Resolved once and cached at
+// module scope so every card shares the single lookup.
+let dragIconPromise: Promise<string | null> | null = null;
+function getDragIconPath(): Promise<string | null> {
+  if (!dragIconPromise) {
+    dragIconPromise = resolveResource("icons/drag-audio.png").catch(() => null);
+  }
+  return dragIconPromise;
+}
 
 interface VoiceCardProps {
   record: VoiceRecord;
@@ -41,6 +54,19 @@ export function VoiceCard({ record }: VoiceCardProps) {
   const { t } = useTranslation();
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
+  // Filesystem path to the bundled drag thumbnail, resolved lazily. Falls back
+  // to `null` (then to the audio path) if the resource cannot be resolved.
+  const dragIconRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getDragIconPath().then((p) => {
+      if (active) dragIconRef.current = p;
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const kindIcon = record.kind === "in" ? "📥" : "📤";
   const kindLabel =
@@ -110,11 +136,14 @@ export function VoiceCard({ record }: VoiceCardProps) {
   async function handleDragOut() {
     if (!record.translatedAudioPath) return;
     try {
-      // icon is required by the API — we pass the audio file path itself as icon.
-      // On Windows this shows no visual preview but drag proceeds correctly.
+      // The drag plugin requires an `icon` filesystem path. Prefer the bundled
+      // 64x64 thumbnail (resolved via resolveResource); if resolution failed
+      // (e.g. resource missing), fall back to the audio file path itself so the
+      // drag still proceeds — only the preview thumbnail is lost.
+      const icon = dragIconRef.current ?? record.translatedAudioPath;
       await startDrag({
         item: [record.translatedAudioPath],
-        icon: record.translatedAudioPath,
+        icon,
       });
     } catch {
       // drag cancelled — silent
