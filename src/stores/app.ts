@@ -9,6 +9,7 @@ import {
   type LiveStateEvent,
   type LevelsEvent,
   type LiveConfig,
+  type VoiceRecord,
 } from "../lib/ipc";
 import { appendTranscript, type TranscriptLine } from "../lib/transcript";
 
@@ -24,6 +25,7 @@ interface AppState {
   levels: LevelsEvent | null;
   screen: Screen;
   lastError: string | null;
+  voiceMessages: VoiceRecord[];
 
   init: () => Promise<void>;
   patchSettings: (p: Partial<Settings>) => Promise<void>;
@@ -35,6 +37,8 @@ interface AppState {
   startLive: (cfg: LiveConfig) => Promise<void>;
   stopLive: () => Promise<void>;
   clearTranscript: () => void;
+  loadVoice: () => Promise<void>;
+  upsertVoice: (rec: VoiceRecord) => void;
 }
 
 let initialized = false;
@@ -53,6 +57,7 @@ export const useAppStore = create<AppState>((set, _get) => ({
   levels: null,
   screen: "live",
   lastError: null,
+  voiceMessages: [],
 
   init: async () => {
     if (initialized) return;
@@ -92,6 +97,21 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
     ipc.onDevicesChanged((ev) => {
       set({ devices: ev });
+    });
+
+    ipc.onVoiceProgress(async (ev) => {
+      try {
+        const rec = await ipc.voiceGet(ev.id);
+        if (rec) {
+          set((state) => ({
+            voiceMessages: state.voiceMessages.some((m) => m.id === rec.id)
+              ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
+              : [rec, ...state.voiceMessages],
+          }));
+        }
+      } catch {
+        // best-effort
+      }
     });
   },
 
@@ -154,4 +174,22 @@ export const useAppStore = create<AppState>((set, _get) => ({
   },
 
   clearTranscript: () => set({ transcript: [] }),
+
+  loadVoice: async () => {
+    try {
+      const voiceMessages = await ipc.voiceList();
+      // newest first
+      set({ voiceMessages: [...voiceMessages].reverse() });
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
+  upsertVoice: (rec: VoiceRecord) => {
+    set((state) => ({
+      voiceMessages: state.voiceMessages.some((m) => m.id === rec.id)
+        ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
+        : [rec, ...state.voiceMessages],
+    }));
+  },
 }));

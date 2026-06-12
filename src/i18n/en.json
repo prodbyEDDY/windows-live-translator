@@ -113,6 +113,39 @@
       "zoomNote": "The translator must be running (the \"Start\" button on the main screen)."
     }
   },
+  "voice": {
+    "title": "Voice Messages",
+    "recordButton": "Record",
+    "stopButton": "Stop",
+    "recordCap": "max 5:00",
+    "dropHint": "Drop an audio file here",
+    "dropOverlay": "Release to import",
+    "emptyHint": "No voice messages yet.\nRecord a voice message with the Record button or drag and drop an audio file (.ogg, .mp3, .wav, etc.).\nDrag the translated file into WhatsApp when ready.",
+    "kindIn": "Received",
+    "kindOut": "Recorded",
+    "stageLabel": {
+      "pending": "pending",
+      "transcribing": "transcribing",
+      "synthesizing": "synthesizing",
+      "done": "done",
+      "error": "error"
+    },
+    "originalLabel": "Original",
+    "translationLabel": "Translation",
+    "copyOriginal": "Copy original",
+    "copyTranslation": "Copy translation",
+    "copied": "Copied",
+    "dragHandle": "⠿ Drag into WhatsApp",
+    "dragDisclaimer": "Will arrive as an audio file, not a voice note",
+    "saveAs": "Save as…",
+    "retry": "Retry",
+    "error": {
+      "alreadyRecording": "Recording is already in progress",
+      "tooShort": "Recording is too short",
+      "notAudio": "Not an audio file: {{files}}",
+      "importFailed": "Failed to import file"
+    }
+  },
   "live": {
     "myLang": "My language",
     "peerLang": "Peer language",
