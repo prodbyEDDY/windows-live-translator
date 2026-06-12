@@ -7,7 +7,7 @@ use rubato::audioadapter_buffers::direct::SequentialSlice;
 /// Asserts that `interleaved.len()` is a multiple of `channels`.
 pub fn downmix_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     debug_assert!(
-        interleaved.len() % channels == 0,
+        interleaved.len().is_multiple_of(channels),
         "interleaved buffer length {} is not a multiple of channels {}",
         interleaved.len(),
         channels

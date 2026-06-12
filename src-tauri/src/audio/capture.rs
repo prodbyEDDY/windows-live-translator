@@ -254,7 +254,7 @@ fn capture_loop(
     // off the hot path where possible.
     let mut frame_bytes: Vec<u8> = Vec::new();
 
-    while !stop.load(Ordering::Relaxed) {
+    'outer: while !stop.load(Ordering::Relaxed) {
         // Wait for the engine to signal that a packet is ready. Timeout just
         // means "no data this interval" — loop so we re-check the stop flag.
         match stream.event.wait_for_event(EVENT_TIMEOUT_MS) {
@@ -266,10 +266,23 @@ fn capture_loop(
             }
         }
 
-        // Drain everything currently available into our byte queue.
-        if let Err(e) = stream.capture_client.read_from_device_to_deque(&mut byte_queue) {
-            tracing::warn!("capture: read failed (device gone?), stopping: {e}");
-            break;
+        // Drain ALL packets that are ready right now: one event can signal
+        // multiple waiting packets, so loop on get_next_packet_size() until it
+        // reports 0 frames to avoid starving the capture client.
+        loop {
+            match stream.capture_client.get_next_packet_size() {
+                Ok(Some(0)) | Ok(None) => break,
+                Ok(Some(_)) => {
+                    if let Err(e) = stream.capture_client.read_from_device_to_deque(&mut byte_queue) {
+                        tracing::warn!("capture: read failed (device gone?), stopping: {e}");
+                        break 'outer;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("capture: get_next_packet_size failed, stopping: {e}");
+                    break 'outer;
+                }
+            }
         }
 
         // Convert whole frames to mono f32 blocks and emit. We emit per drained
@@ -302,6 +315,7 @@ fn capture_loop(
 /// Reinterpret a little-endian f32 byte buffer as `Vec<f32>`. `bytes.len()` is
 /// assumed to be a multiple of 4 (whole frames of f32 samples).
 fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
+    debug_assert!(bytes.len().is_multiple_of(4), "byte slice not f32-aligned");
     bytes
         .chunks_exact(4)
         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -314,12 +328,22 @@ mod tests {
 
     #[test]
     fn bytes_to_f32_roundtrips() {
-        let vals = [0.0f32, 1.0, -1.0, 0.5];
+        let vals = [0.0f32, 1.0, -1.0, 0.5, -0.5];
         let mut bytes = Vec::new();
         for v in vals {
             bytes.extend_from_slice(&v.to_le_bytes());
         }
         assert_eq!(bytes_to_f32(&bytes), vals.to_vec());
+
+        // NaN bit-pattern roundtrip: bytes_to_f32 must preserve the bit pattern.
+        let nan_bits: u32 = 0x7FC0_0001; // a quiet NaN with a non-zero payload
+        let nan_val = f32::from_bits(nan_bits);
+        let mut nan_bytes = Vec::new();
+        nan_bytes.extend_from_slice(&nan_val.to_le_bytes());
+        let result = bytes_to_f32(&nan_bytes);
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_nan());
+        assert_eq!(result[0].to_bits(), nan_bits);
     }
 
     #[test]

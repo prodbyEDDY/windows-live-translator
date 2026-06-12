@@ -24,6 +24,27 @@ pub enum KeyStatus {
     Error { message: String },
 }
 
+pub fn classify_validation(status: u16, body: &str) -> KeyStatus {
+    let snippet: String = body.chars().take(300).collect();
+    match status {
+        200 => KeyStatus::Valid,
+        400 | 401 | 403 => KeyStatus::Invalid { reason: snippet },
+        s => KeyStatus::Error { message: format!("HTTP {s}: {snippet}") },
+    }
+}
+
+pub async fn validate_key(key: &str) -> KeyStatus {
+    let url = format!("{BASE}/models?pageSize=1");
+    match client().get(&url).header("x-goog-api-key", key).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            classify_validation(status, &body)
+        }
+        Err(e) => KeyStatus::Error { message: format!("network: {}", e.without_url()) },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,26 +82,5 @@ mod tests {
     async fn validates_real_key() {
         let key = std::env::var("GEMINI_API_KEY").unwrap();
         assert!(matches!(validate_key(&key).await, KeyStatus::Valid));
-    }
-}
-
-pub fn classify_validation(status: u16, body: &str) -> KeyStatus {
-    let snippet: String = body.chars().take(300).collect();
-    match status {
-        200 => KeyStatus::Valid,
-        400 | 401 | 403 => KeyStatus::Invalid { reason: snippet },
-        s => KeyStatus::Error { message: format!("HTTP {s}: {snippet}") },
-    }
-}
-
-pub async fn validate_key(key: &str) -> KeyStatus {
-    let url = format!("{BASE}/models?pageSize=1");
-    match client().get(&url).header("x-goog-api-key", key).send().await {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let body = resp.text().await.unwrap_or_default();
-            classify_validation(status, &body)
-        }
-        Err(e) => KeyStatus::Error { message: format!("network: {}", e.without_url()) },
     }
 }
