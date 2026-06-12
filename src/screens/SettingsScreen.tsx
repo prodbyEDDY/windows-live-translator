@@ -365,7 +365,7 @@ export function SettingsScreen() {
           </div>
 
           <p className="text-[12px] text-muted font-mono">
-            {t("settings.app.version")}: 0.3.0
+            {t("settings.app.version")}: 0.3.1
           </p>
         </SettingsCard>
       </div>

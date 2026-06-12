@@ -79,7 +79,7 @@ export function Sidebar() {
           onClick={() => setScreen("settings")}
         />
         <span className="font-mono text-[11px] text-stone-500 tracking-tight px-1.5 pt-1.5">
-          v0.3.0
+          v0.3.1
         </span>
       </div>
     </nav>
