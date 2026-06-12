@@ -39,7 +39,7 @@ pub struct ServerMessage {
     pub go_away: Option<Value>,
     pub session_resumption_update: Option<SessionResumptionUpdate>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerContent {
     pub model_turn: Option<ModelTurn>,
@@ -63,7 +63,13 @@ pub struct Transcription { pub text: String }
 pub struct SessionResumptionUpdate { pub new_handle: Option<String>, pub resumable: Option<bool> }
 
 pub fn parse_server_message(payload: &[u8]) -> Option<ServerMessage> {
-    serde_json::from_slice(payload).ok()
+    match serde_json::from_slice(payload) {
+        Ok(msg) => Some(msg),
+        Err(e) => {
+            tracing::warn!("unparseable live api frame: {e}");
+            None
+        }
+    }
 }
 
 /// Concatenate all PCM16 audio in a server content frame (24kHz mono LE).
@@ -73,7 +79,11 @@ pub fn extract_audio(sc: &ServerContent) -> Vec<i16> {
         for p in &turn.parts {
             if let Some(d) = &p.inline_data {
                 if d.mime_type.starts_with("audio/pcm") {
-                    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&d.data) {
+                    if let Ok(mut bytes) = base64::engine::general_purpose::STANDARD.decode(&d.data) {
+                        if bytes.len() % 2 != 0 {
+                            tracing::warn!("odd pcm payload length {}, dropping trailing byte", bytes.len());
+                            bytes.pop();
+                        }
                         out.extend(bytes.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])));
                     }
                 }
@@ -129,5 +139,40 @@ mod tests {
     #[test]
     fn tolerates_unknown_fields() {
         assert!(parse_server_message(br#"{"usageMetadata":{"x":1},"weird":true}"#).is_some());
+    }
+    #[test]
+    fn extract_audio_skips_invalid_base64() {
+        let sc = ServerContent {
+            model_turn: Some(ModelTurn {
+                parts: vec![Part {
+                    inline_data: Some(InlineData {
+                        mime_type: "audio/pcm;rate=24000".to_string(),
+                        data: "!!!".to_string(),
+                    }),
+                }],
+            }),
+            ..Default::default()
+        };
+        let result = extract_audio(&sc);
+        assert_eq!(result, Vec::<i16>::new());
+    }
+    #[test]
+    fn extract_audio_odd_length_drops_trailing_byte() {
+        // base64 of 3 bytes [1, 2, 3] -> "AQID"
+        let sc = ServerContent {
+            model_turn: Some(ModelTurn {
+                parts: vec![Part {
+                    inline_data: Some(InlineData {
+                        mime_type: "audio/pcm;rate=24000".to_string(),
+                        data: "AQID".to_string(),
+                    }),
+                }],
+            }),
+            ..Default::default()
+        };
+        let result = extract_audio(&sc);
+        // Should decode to [1, 2, 3], drop the 3, then interpret [1, 2] as one i16 sample
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], i16::from_le_bytes([1, 2]));
     }
 }
