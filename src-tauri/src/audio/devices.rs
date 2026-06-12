@@ -184,10 +184,9 @@ pub fn list_audio_apps() -> anyhow::Result<Vec<AppSession>> {
                 _ => continue,
             }
 
-            let name = match process_name_for_pid(pid) {
-                Some(n) => n,
-                None => continue,
-            };
+            // Elevated processes deny OpenProcess — still list them by pid so
+            // the app picker doesn't silently hide an audible app.
+            let name = process_name_for_pid(pid).unwrap_or_else(|| format!("pid {pid}"));
 
             seen.insert(pid);
             apps.push(AppSession { pid, name });
@@ -213,7 +212,7 @@ fn process_name_for_pid(pid: u32) -> Option<String> {
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
 
-        let mut buf = [0u16; 260]; // MAX_PATH
+        let mut buf = [0u16; 1024]; // > MAX_PATH: long install paths must not fail the query
         let mut size = buf.len() as u32;
         let result = QueryFullProcessImageNameW(
             handle,
@@ -263,6 +262,9 @@ fn snapshot(payload: &DevicesPayload) -> String {
 /// Spawn a background thread that polls device state every 2s and emits a Tauri
 /// `devices:changed` event (carrying the [`DevicesPayload`]) whenever the
 /// snapshot changes versus the previous successful read.
+///
+/// Call exactly once from app setup — there is no shutdown mechanism and a
+/// second call would spawn a duplicate poller emitting duplicate events.
 pub fn spawn_device_watcher(app: tauri::AppHandle) {
     use tauri::Emitter;
 
@@ -272,12 +274,11 @@ pub fn spawn_device_watcher(app: tauri::AppHandle) {
 
         let mut last: Option<String> = None;
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-
             let payload = match list_devices() {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::warn!("device watcher: list_devices failed: {e}");
+                    std::thread::sleep(std::time::Duration::from_secs(2));
                     continue;
                 }
             };
@@ -294,6 +295,8 @@ pub fn spawn_device_watcher(app: tauri::AppHandle) {
                 }
             }
             last = Some(snap);
+
+            std::thread::sleep(std::time::Duration::from_secs(2));
         }
     });
 }
