@@ -231,6 +231,20 @@ async fn run_import_pipeline(
 
     match transcribe_translate(&api_key, &bytes, &mime, &target_lang).await {
         Ok(t) => {
+            // History may have been cleared (clear_all) while the request was in
+            // flight. Re-check before the final update so we don't resurrect a
+            // deleted row.
+            match history.get_voice(id) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    tracing::info!("voice_import {id}: row cleared mid-flight, skipping update");
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("voice_import {id}: get_voice before update failed: {e}");
+                    return;
+                }
+            }
             let _ = history.update_voice(
                 id,
                 VoiceUpdate {
@@ -310,6 +324,22 @@ async fn run_record_pipeline(
         }
     };
 
+    // History may have been cleared (clear_all) while this pipeline was in
+    // flight: the row — and any files we'd write — are gone. Re-check right
+    // before writing the translated artifact; if the row vanished, skip the
+    // write and the final update so we don't recreate an orphan file/row.
+    match history.get_voice(id) {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            tracing::info!("voice_record {id}: row cleared mid-flight, skipping write");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("voice_record {id}: get_voice before write failed: {e}");
+            return;
+        }
+    }
+
     // 3. Encode to Ogg Opus and write the translated artifact (CPU-bound — run
     //    on a blocking thread so the async runtime isn't stalled).
     let translated_path = voice_dir.join(translated_file_name(id));
@@ -374,9 +404,14 @@ pub async fn voice_import(
         .map_err(|e| e.to_string())?;
 
     // Now we know the id — copy the source into its canonical location and fix
-    // the stored source_path.
+    // the stored source_path. If the copy fails the source file never
+    // materialized, so roll back the freshly-inserted `pending` row (best-effort)
+    // instead of leaving a permanently-stuck card the pipeline can never advance.
     let dest = state.voice_dir.join(source_file_name(id, &ext));
-    std::fs::copy(&src, &dest).map_err(|e| format!("copy_failed: {e}"))?;
+    if let Err(e) = std::fs::copy(&src, &dest) {
+        let _ = state.history.delete_voice(id);
+        return Err(format!("copy_failed: {e}"));
+    }
     update_source_path(&state.history, id, &dest);
 
     let app2 = app.clone();
@@ -444,9 +479,14 @@ pub async fn voice_record_stop(
         .map_err(|e| e.to_string())?;
 
     // Downsample 48k → 16k mono and write a PCM16 WAV (the mime Gemini always
-    // accepts). CPU work, but small for a ≤5-min clip.
+    // accepts). CPU work, but small for a ≤5-min clip. If the write fails the
+    // source file never materialized, so roll back the freshly-inserted
+    // `pending` row (best-effort) rather than leave a stuck card behind.
     let source_path = state.voice_dir.join(source_file_name(id, "wav"));
-    write_wav_16k(&samples, &source_path).map_err(|e| format!("wav_write_failed: {e}"))?;
+    if let Err(e) = write_wav_16k(&samples, &source_path) {
+        let _ = state.history.delete_voice(id);
+        return Err(format!("wav_write_failed: {e}"));
+    }
     update_source_path(&state.history, id, &source_path);
 
     let history = Arc::clone(&state.history);

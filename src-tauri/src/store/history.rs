@@ -42,7 +42,7 @@ pub struct VoiceRecord {
     pub translation: Option<String>,
     pub translated_audio_path: Option<String>,
     pub target_lang: String,
-    /// Pipeline stage: `pending|transcribing|translating|synthesizing|done|error:<msg>`
+    /// Pipeline stage: `pending|transcribing|synthesizing|done|error:<msg>`
     pub stage: String,
 }
 
@@ -270,6 +270,19 @@ impl HistoryStore {
 
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|v| v.as_ref()).collect();
         conn.execute(&sql, params_refs.as_slice())?;
+        Ok(())
+    }
+
+    /// Delete a single voice row by id.
+    ///
+    /// Used by the import/record commands to roll back the freshly-inserted
+    /// `pending` row when the on-disk source file could not be written (a failed
+    /// copy or WAV write), so the UI never shows a permanently-stuck card for a
+    /// row whose source never materialized. Deleting a non-existent id is a
+    /// no-op (not an error).
+    pub fn delete_voice(&self, id: i64) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM voice_messages WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -511,6 +524,20 @@ mod tests {
         let (store, _dir) = open_temp();
         let result = store.get_voice(9999).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn voice_delete_removes_row() {
+        let (store, _dir) = open_temp();
+        let id = store.save_voice("in", "/tmp/foo.ogg", "en").unwrap();
+        assert!(store.get_voice(id).unwrap().is_some());
+
+        store.delete_voice(id).unwrap();
+        assert!(store.get_voice(id).unwrap().is_none());
+
+        // Deleting a non-existent id is a no-op, not an error.
+        store.delete_voice(id).unwrap();
+        store.delete_voice(9999).unwrap();
     }
 
     #[test]

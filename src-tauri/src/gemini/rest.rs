@@ -288,26 +288,38 @@ pub async fn transcribe_translate(
 
     let prompt = build_prompt(target_lang);
 
-    // Build the contents array depending on file size.
-    let contents = if audio.len() <= TWENTY_MB {
-        let b64 = base64::engine::general_purpose::STANDARD.encode(audio);
-        serde_json::json!([{
-            "parts": [
-                { "inline_data": { "mime_type": mime, "data": b64 } },
-                { "text": prompt }
-            ]
-        }])
+    // For files over 20 MB we upload ONCE via the Files API and reuse the
+    // resulting `file_uri` for both the first attempt and the retry. Re-uploading
+    // on retry doubled the (slow) upload for large clips for no benefit — the
+    // returned uri is valid for the whole `transcribe_translate` call.
+    let uploaded_uri = if audio.len() <= TWENTY_MB {
+        None
     } else {
-        let file_uri = upload_audio_file(api_key, audio, mime).await?;
-        serde_json::json!([{
-            "parts": [
-                { "file_data": { "mime_type": mime, "file_uri": file_uri } },
-                { "text": prompt }
-            ]
-        }])
+        Some(upload_audio_file(api_key, audio, mime).await?)
     };
 
-    let body = serde_json::json!({ "contents": contents });
+    // Build the parts for a given prompt, reusing the uploaded uri when present
+    // and falling back to inline base64 for small files.
+    let build_contents = |prompt: &str| {
+        if let Some(file_uri) = &uploaded_uri {
+            serde_json::json!([{
+                "parts": [
+                    { "file_data": { "mime_type": mime, "file_uri": file_uri } },
+                    { "text": prompt }
+                ]
+            }])
+        } else {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(audio);
+            serde_json::json!([{
+                "parts": [
+                    { "inline_data": { "mime_type": mime, "data": b64 } },
+                    { "text": prompt }
+                ]
+            }])
+        }
+    };
+
+    let body = serde_json::json!({ "contents": build_contents(&prompt) });
 
     // First attempt.
     let text = call_generate_content(api_key, &body).await?;
@@ -315,31 +327,12 @@ pub async fn transcribe_translate(
         return Ok(result);
     }
 
-    // Retry with a stricter instruction appended.
+    // Retry with a stricter instruction appended (reusing the same `file_uri`
+    // for the >20 MB path — no second upload).
     let retry_prompt = format!(
         "{prompt}\nReply with ONLY the JSON object, no other text."
     );
-    let retry_contents = if audio.len() <= TWENTY_MB {
-        let b64 = base64::engine::general_purpose::STANDARD.encode(audio);
-        serde_json::json!([{
-            "parts": [
-                { "inline_data": { "mime_type": mime, "data": b64 } },
-                { "text": retry_prompt }
-            ]
-        }])
-    } else {
-        // Re-upload is expensive; keep a fresh uri approach — in practice the file
-        // will have been uploaded above, but the Files API uri may still be valid.
-        // For simplicity we re-upload on retry for >20MB paths.
-        let file_uri = upload_audio_file(api_key, audio, mime).await?;
-        serde_json::json!([{
-            "parts": [
-                { "file_data": { "mime_type": mime, "file_uri": file_uri } },
-                { "text": retry_prompt }
-            ]
-        }])
-    };
-    let retry_body = serde_json::json!({ "contents": retry_contents });
+    let retry_body = serde_json::json!({ "contents": build_contents(&retry_prompt) });
     let retry_text = call_generate_content(api_key, &retry_body).await?;
     parse_voice_json(&retry_text)
         .ok_or_else(|| anyhow::anyhow!("model returned unparseable JSON after retry: {retry_text}"))

@@ -92,6 +92,31 @@ pub fn run() {
             wizard::wizard_state,
             wizard::wizard_install_cable,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |app_handle, event| {
+            // App-exit teardown: stop any running live session so the ducking
+            // thread drops its `DuckGuard` and restores the peer app's volume.
+            // Without this the app can exit while a session is live, killing the
+            // ducking thread with the guard still held → peer stays muted until
+            // the next launch.
+            //
+            // `ExitRequested` and `Exit` can both fire; gate the teardown behind
+            // a `Once` so the (consuming) `controller.stop()` runs exactly once.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                static TEARDOWN: std::sync::Once = std::sync::Once::new();
+                TEARDOWN.call_once(|| {
+                    let state = app_handle.state::<AppState>();
+                    // The event-loop closure runs on the main thread (not a tokio
+                    // worker), so `blocking_lock()` cannot panic here.
+                    let controller = state.live.blocking_lock().take();
+                    if let Some(controller) = controller {
+                        controller.stop();
+                    }
+                });
+            }
+        });
 }

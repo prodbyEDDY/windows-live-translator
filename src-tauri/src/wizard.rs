@@ -28,6 +28,7 @@
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -170,8 +171,35 @@ fn run_installer_elevated(installer_path: &Path) -> Result<(), String> {
 /// The temp dir is held alive across the entire installer run (the installer
 /// reads from it) and cleaned up on return. The frontend polls [`wizard_state`]
 /// afterwards to detect the freshly registered cable endpoint.
+/// Re-entrancy guard for [`wizard_install_cable`]. A second concurrent install
+/// (e.g. an impatient double-click) would launch a second elevated installer and
+/// race the first over the same temp files; this serializes to one at a time.
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard that clears [`INSTALLING`] on drop, so *every* return path of
+/// `wizard_install_cable` (including `?` error propagation and the
+/// `spawn_blocking` join) resets the flag — no manual resets to forget.
+struct InstallGuard;
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        INSTALLING.store(false, Ordering::SeqCst);
+    }
+}
+
 #[tauri::command]
 pub async fn wizard_install_cable() -> Result<(), String> {
+    // Reject a second concurrent install. `compare_exchange` only succeeds for
+    // the first caller; everyone else sees `Err("already_installing")`.
+    if INSTALLING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("already_installing".to_string());
+    }
+    // From here on, _guard clears the flag on every return path.
+    let _guard = InstallGuard;
+
     // 1. Download.
     let resp = dl_client()
         .get(CABLE_ZIP_URL)
