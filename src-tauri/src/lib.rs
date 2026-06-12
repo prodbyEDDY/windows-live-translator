@@ -23,6 +23,13 @@ pub fn run() {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second instance was launched — focus the existing main window.
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         // Native drag-out of translated voice files into other apps (WhatsApp).
         .plugin(tauri_plugin_drag::init())

@@ -38,6 +38,34 @@ Gemini Live живут в Rust-бэкенде (Tauri 2). Фронтенд (React
 - План реализации Stage 2: [`docs/superpowers/plans/2026-06-12-live-translator-stage2.md`](docs/superpowers/plans/2026-06-12-live-translator-stage2.md)
 - Ручной E2E-чеклист (Stage 1 + 2): [`docs/testing/stage1-e2e-checklist.md`](docs/testing/stage1-e2e-checklist.md)
 
+## Установка
+
+### Готовый инсталлятор (рекомендуется)
+
+После выполнения `npm run tauri build` готовый установщик находится по пути:
+
+```
+src-tauri/target/release/bundle/nsis/Live Translator_0.1.0_x64-setup.exe
+```
+
+Запустите `*-setup.exe` — он установит приложение и создаст ярлык в меню «Пуск».
+Деинсталлятор доступен через «Установка и удаление программ» Windows.
+
+> **Автообновления не включены.** Функция `tauri-updater` требует сервера
+> обновлений и ключей подписи. Решение о способе дистрибуции и канале обновлений
+> остаётся за владельцем проекта.
+
+### Сборка из исходников
+
+```powershell
+npm install
+npm run tauri build   # собирает релизный бинарь + NSIS-инсталлятор
+```
+
+Требования: Rust ≥ 1.77, Node ≥ 20, Windows 10/11.
+
+---
+
 ## Предварительные требования
 
 - **Windows 10/11.**

@@ -63,4 +63,5 @@ tauri-plugin-dialog = "2.7.1"
 # WAV writer: the recording pipeline writes a 16 kHz mono PCM16 WAV (the mime
 # Gemini always accepts) before sending it for transcription. Used in tests too.
 hound = "3.5.1"
+tauri-plugin-single-instance = "2.4.2"
 
