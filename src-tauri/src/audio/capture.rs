@@ -17,6 +17,28 @@
 //! * `Handle::wait_for_event` returns `Err(WasapiError::EventTimeout)` on
 //!   timeout; we treat that as "no data yet" and loop again so the stop flag is
 //!   polled at least every 200 ms.
+//!
+//! ## Process loopback (Task 10)
+//! * `App { pid }` and `SystemExcludeSelf` use process loopback via
+//!   `AudioClient::new_application_loopback_client(pid, include_tree)`. The
+//!   returned client is created with `Direction::Render` internally, so calling
+//!   `initialize_client(.., &Direction::Capture, ..)` makes the crate set
+//!   `AUDCLNT_STREAMFLAGS_LOOPBACK` for us — same downstream contract as mic.
+//! * Process-loopback clients are not backed by a real endpoint device, so
+//!   `get_device_period()` is *not* called for them. We pass
+//!   `buffer_duration_hns: 0` (let the engine pick its default), exactly as the
+//!   crate's `record_application` example does.
+//! * Event-driven mode *is* supported for process loopback in this crate (the
+//!   `record_application` example drives it via `set_get_eventhandle` +
+//!   `wait_for_event`), so the mic capture loop is reused verbatim. No polling
+//!   fallback is required.
+//! * `include_tree` maps directly to the WASAPI loopback mode in the crate:
+//!   `true` → `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` (capture the
+//!   target pid *and its children* — needed for browsers/Electron whose audio
+//!   plays from child processes); `false` →
+//!   `PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE` (capture everything
+//!   *except* the target tree). `SystemExcludeSelf` passes our own pid with
+//!   `false` so we hear the whole system minus ourselves.
 
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::sync::{
@@ -167,30 +189,58 @@ fn setup_stream(source: &CaptureSource) -> anyhow::Result<Stream> {
     // the codebase does; we never uninitialize.
     let _ = wasapi::initialize_mta().ok();
 
-    let device = match source {
+    // Acquire the audio client and pick the shared-mode buffer duration per
+    // source. For a real endpoint device we ask the engine for its minimum
+    // period (lowest-latency buffer it will grant). Process-loopback clients are
+    // not backed by an endpoint device — `get_device_period()` is not valid for
+    // them — so we pass 0 and let the engine choose its default, matching the
+    // crate's `record_application` example.
+    let (mut audio_client, buffer_duration_hns) = match source {
         CaptureSource::Mic { device_id } => {
             let enumerator = wasapi::DeviceEnumerator::new()
                 .map_err(|e| anyhow::anyhow!("failed to create device enumerator: {e}"))?;
-            match device_id {
+            let device = match device_id {
                 Some(id) => enumerator
                     .get_device(id)
                     .map_err(|e| anyhow::anyhow!("failed to open capture device {id}: {e}"))?,
                 None => enumerator
                     .get_default_device(&wasapi::Direction::Capture)
                     .map_err(|e| anyhow::anyhow!("failed to open default capture device: {e}"))?,
-            }
+            };
+            let audio_client = device
+                .get_iaudioclient()
+                .map_err(|e| anyhow::anyhow!("failed to get IAudioClient: {e}"))?;
+            let (_default_period, min_period) = audio_client
+                .get_device_period()
+                .map_err(|e| anyhow::anyhow!("failed to get device period: {e}"))?;
+            (audio_client, min_period)
         }
-        CaptureSource::App { .. } | CaptureSource::SystemExcludeSelf => {
-            anyhow::bail!("process loopback lands in Task 10");
+        // INCLUDE the target process tree: browsers/Electron render audio from
+        // child processes, so we must capture the whole tree under `pid`.
+        CaptureSource::App { pid } => {
+            let audio_client = wasapi::AudioClient::new_application_loopback_client(*pid, true)
+                .map_err(|e| {
+                    anyhow::anyhow!("failed to create process-loopback client for pid {pid}: {e}")
+                })?;
+            (audio_client, 0)
+        }
+        // EXCLUDE our own process tree: passing our pid with `include_tree =
+        // false` captures everything the system renders *except* us, so we don't
+        // capture (and feed back) our own output.
+        CaptureSource::SystemExcludeSelf => {
+            let self_pid = std::process::id();
+            let audio_client =
+                wasapi::AudioClient::new_application_loopback_client(self_pid, false).map_err(
+                    |e| anyhow::anyhow!("failed to create system-exclude-self loopback client: {e}"),
+                )?;
+            (audio_client, 0)
         }
     };
 
-    let mut audio_client = device
-        .get_iaudioclient()
-        .map_err(|e| anyhow::anyhow!("failed to get IAudioClient: {e}"))?;
-
     // Request 48 kHz, 32-bit float, stereo. AUTOCONVERTPCM lets the audio engine
     // resample/reformat whatever the device's native mix format is into this.
+    // For process loopback the engine performs the same conversion, so a 48 kHz
+    // request needs no extra resampling on our side.
     let desired_format = wasapi::WaveFormat::new(
         32,
         32,
@@ -200,15 +250,9 @@ fn setup_stream(source: &CaptureSource) -> anyhow::Result<Stream> {
         None,
     );
 
-    // Use the engine's minimum period for the buffer duration — lowest latency
-    // shared-mode buffer the engine will grant.
-    let (_default_period, min_period) = audio_client
-        .get_device_period()
-        .map_err(|e| anyhow::anyhow!("failed to get device period: {e}"))?;
-
     let mode = wasapi::StreamMode::EventsShared {
         autoconvert: true,
-        buffer_duration_hns: min_period,
+        buffer_duration_hns,
     };
     audio_client
         .initialize_client(&desired_format, &wasapi::Direction::Capture, &mode)
@@ -347,17 +391,48 @@ mod tests {
     }
 
     #[test]
-    fn app_source_bails_until_task_10() {
-        // CaptureHandle has no Debug impl, so match instead of unwrap_err().
-        for src in [
-            CaptureSource::App { pid: 1234 },
-            CaptureSource::SystemExcludeSelf,
-        ] {
-            match start_capture(src) {
-                Ok(_) => panic!("process loopback should bail until Task 10"),
-                Err(e) => assert!(e.to_string().contains("Task 10")),
+    #[ignore = "needs an app playing audio; pass pid via TEST_PID env"]
+    fn app_loopback_3s() {
+        let pid: u32 = std::env::var("TEST_PID").unwrap().parse().unwrap();
+        let h = start_capture(CaptureSource::App { pid }).unwrap();
+        let mut total = 0usize;
+        let mut nonzero = 0usize;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while std::time::Instant::now() < deadline {
+            if let Ok(b) = h.rx.recv_timeout(std::time::Duration::from_millis(300)) {
+                nonzero += b.iter().filter(|s| s.abs() > 1e-6).count();
+                total += b.len();
             }
         }
+        h.stop();
+        assert!(total > 48000, "captured {total} samples");
+        assert!(
+            nonzero > 1000,
+            "captured only silence ({nonzero} nonzero of {total})"
+        );
+        println!("app_loopback_3s: total={total} samples, nonzero={nonzero}");
+    }
+
+    #[test]
+    #[ignore = "needs system audio playing; run alongside the wav loop"]
+    fn system_exclude_self_3s() {
+        let h = start_capture(CaptureSource::SystemExcludeSelf).unwrap();
+        let mut total = 0usize;
+        let mut nonzero = 0usize;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while std::time::Instant::now() < deadline {
+            if let Ok(b) = h.rx.recv_timeout(std::time::Duration::from_millis(300)) {
+                nonzero += b.iter().filter(|s| s.abs() > 1e-6).count();
+                total += b.len();
+            }
+        }
+        h.stop();
+        assert!(total > 48000, "captured {total} samples");
+        assert!(
+            nonzero > 1000,
+            "captured only silence ({nonzero} nonzero of {total})"
+        );
+        println!("system_exclude_self_3s: total={total} samples, nonzero={nonzero}");
     }
 
     #[test]
