@@ -51,6 +51,8 @@ ogg = "0.9"
 # Best-effort media duration probing. Defaults cover wav/flac/ogg/vorbis/pcm;
 # add mp3 + isomp4 (m4a/aac) explicitly for the formats voice messages may use.
 symphonia = { version = "0.5", features = ["mp3", "isomp4"] }
+# Bundled SQLite — no system library dependency required
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 hound = "3.5.1"
