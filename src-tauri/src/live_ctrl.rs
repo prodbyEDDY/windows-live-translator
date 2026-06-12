@@ -60,6 +60,24 @@ const SEND_CHUNK: usize = SEND_RATE / 10;
 const BRIDGE_RECV_TIMEOUT: Duration = Duration::from_millis(200);
 /// Level-meter tick interval.
 const LEVELS_TICK: Duration = Duration::from_millis(100);
+/// Cost-meter tick interval (1 second).
+const COST_TICK: Duration = Duration::from_secs(1);
+
+/// Public-preview pricing for the gemini-3.5-live-translate-preview model,
+/// charged per active session minute (per direction).
+const USD_PER_SESSION_MINUTE: f64 = 0.023;
+
+/// Estimate the session cost in USD.
+///
+/// Each direction is billed independently: `out_secs` seconds for the OUT
+/// direction, `in_secs` for IN.  Total cost is the sum of both directions
+/// divided by 60 and multiplied by [`USD_PER_SESSION_MINUTE`].
+///
+/// The `seconds` field emitted on `live:cost` is `max(out_secs, in_secs)` —
+/// the wall-clock elapsed time — while the cost accumulates from both directions.
+fn estimate_usd(out_secs: u64, in_secs: u64) -> f64 {
+    (out_secs + in_secs) as f64 / 60.0 * USD_PER_SESSION_MINUTE
+}
 /// Ducking thread poll interval.
 const DUCK_TICK: Duration = Duration::from_millis(50);
 /// Consecutive idle ducking ticks (queue empty) before releasing the duck.
@@ -368,7 +386,11 @@ impl LiveController {
         }
 
         // 8. Level-meter task: mic (OUT) + IN capture level when present.
-        Self::spawn_levels(app, stop_flag.clone(), mic.level_db_x100.clone(), in_level);
+        Self::spawn_levels(app.clone(), stop_flag.clone(), mic.level_db_x100.clone(), in_level);
+
+        // 9. Cost-meter task: track active seconds per direction and emit live:cost.
+        let has_in = !cfg.test_mode;
+        Self::spawn_cost(app, stop_flag.clone(), state.clone(), has_in);
 
         Ok(Self {
             stop_flag,
@@ -519,6 +541,52 @@ impl LiveController {
                         "appDb": app_db,
                         // No render-side meter yet; keep the floor for outDb.
                         "outDb": -120.0,
+                    }),
+                );
+            }
+        });
+    }
+
+    /// Spawn the cost-meter task (Tauri async runtime).
+    ///
+    /// Ticks every second.  A second counts toward a direction when that
+    /// direction's status is `"running"` or `"reconnecting"`.  Emits
+    /// `live:cost { seconds, estimatedUsd }` on every tick:
+    /// * `seconds` = `max(out_secs, in_secs)` — the wall-clock elapsed time.
+    /// * `estimatedUsd` = cost for both directions combined via [`estimate_usd`].
+    ///
+    /// `has_in` should be `false` in test mode (IN pipeline is skipped), which
+    /// prevents the "off" IN status from ever contributing seconds.
+    fn spawn_cost(
+        app: AppHandle,
+        stop_flag: Arc<AtomicBool>,
+        state: Arc<Mutex<SessState>>,
+        has_in: bool,
+    ) {
+        tauri::async_runtime::spawn(async move {
+            let mut tick = tokio::time::interval(COST_TICK);
+            let mut out_secs: u64 = 0;
+            let mut in_secs: u64 = 0;
+            while !stop_flag.load(Ordering::Relaxed) {
+                tick.tick().await;
+                // Sample the current statuses under lock, then release immediately.
+                let (out_status, in_status) = {
+                    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+                    (guard.out.clone(), guard.in_.clone())
+                };
+                if out_status == "running" || out_status == "reconnecting" {
+                    out_secs += 1;
+                }
+                if has_in && (in_status == "running" || in_status == "reconnecting") {
+                    in_secs += 1;
+                }
+                let seconds = out_secs.max(in_secs);
+                let estimated_usd = estimate_usd(out_secs, in_secs);
+                let _ = app.emit(
+                    "live:cost",
+                    serde_json::json!({
+                        "seconds": seconds,
+                        "estimatedUsd": estimated_usd,
                     }),
                 );
             }
@@ -790,5 +858,31 @@ mod tests {
     fn send_chunk_is_100ms_of_16k() {
         // Guards the constants: 100 ms of 16 kHz mono == 1600 samples.
         assert_eq!(SEND_CHUNK, 1600);
+    }
+
+    #[test]
+    fn estimate_usd_one_minute_out_only() {
+        // 60 out + 0 in = 60 / 60 * 0.023 = 0.023
+        let usd = estimate_usd(60, 0);
+        assert!(
+            (usd - 0.023).abs() < 1e-9,
+            "expected 0.023, got {usd}"
+        );
+    }
+
+    #[test]
+    fn estimate_usd_one_minute_each_direction() {
+        // 60 out + 60 in = 120 / 60 * 0.023 = 0.046
+        let usd = estimate_usd(60, 60);
+        assert!(
+            (usd - 0.046).abs() < 1e-9,
+            "expected 0.046, got {usd}"
+        );
+    }
+
+    #[test]
+    fn estimate_usd_zero() {
+        // 0 + 0 = 0
+        assert_eq!(estimate_usd(0, 0), 0.0);
     }
 }

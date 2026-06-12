@@ -8,6 +8,7 @@ import {
   type AppSession,
   type LiveStateEvent,
   type LevelsEvent,
+  type CostEvent,
   type LiveConfig,
   type VoiceRecord,
 } from "../lib/ipc";
@@ -23,6 +24,7 @@ interface AppState {
   liveState: LiveStateEvent | null;
   transcript: TranscriptLine[];
   levels: LevelsEvent | null;
+  cost: CostEvent | null;
   screen: Screen;
   lastError: string | null;
   voiceMessages: VoiceRecord[];
@@ -55,6 +57,7 @@ export const useAppStore = create<AppState>((set, _get) => ({
   liveState: null,
   transcript: [],
   levels: null,
+  cost: null,
   screen: "live",
   lastError: null,
   voiceMessages: [],
@@ -97,6 +100,10 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
     ipc.onDevicesChanged((ev) => {
       set({ devices: ev });
+    });
+
+    ipc.onCost((ev) => {
+      set({ cost: ev });
     });
 
     ipc.onVoiceProgress(async (ev) => {
@@ -156,7 +163,7 @@ export const useAppStore = create<AppState>((set, _get) => ({
   setLastError: (lastError: string | null) => set({ lastError }),
 
   startLive: async (cfg: LiveConfig) => {
-    set({ lastError: null });
+    set({ lastError: null, cost: null });
     try {
       await ipc.liveStart(cfg);
     } catch (e) {

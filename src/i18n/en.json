@@ -187,6 +187,7 @@
     "sessionReconnecting": "reconnecting",
     "levelMic": "Mic",
     "levelApp": "App",
+    "costTooltip": "Estimated cost at $0.023/min per direction (public preview pricing)",
     "error": {
       "noApiKey": "Add an API key in Settings",
       "alreadyRunning": "Translation is already running",

@@ -187,6 +187,7 @@
     "sessionReconnecting": "переподключение",
     "levelMic": "Мик",
     "levelApp": "Прил",
+    "costTooltip": "Оценка стоимости по тарифу $0.023/мин за направление",
     "error": {
       "noApiKey": "Добавьте API-ключ в настройках",
       "alreadyRunning": "Перевод уже запущен",

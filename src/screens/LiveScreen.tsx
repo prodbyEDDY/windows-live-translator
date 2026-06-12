@@ -59,6 +59,7 @@ export function LiveScreen() {
   const liveState = useAppStore((s) => s.liveState);
   const transcript = useAppStore((s) => s.transcript);
   const levels = useAppStore((s) => s.levels);
+  const cost = useAppStore((s) => s.cost);
   const lastError = useAppStore((s) => s.lastError);
   const startLive = useAppStore((s) => s.startLive);
   const stopLive = useAppStore((s) => s.stopLive);
@@ -412,10 +413,20 @@ export function LiveScreen() {
           />
         </div>
 
-        {/* Duration timer */}
+        {/* Duration + cost */}
         <span className="text-xs font-mono text-gray-500 tabular-nums min-w-10 text-right">
-          {formatDuration(durationSec)}
+          {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
         </span>
+        {cost != null && (
+          <Tooltip>
+            <TooltipTrigger>
+              <Chip size="sm" color="default" className="text-xs font-mono">
+                ~${cost.estimatedUsd.toFixed(2)}
+              </Chip>
+            </TooltipTrigger>
+            <TooltipContent>{t("live.costTooltip")}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

@@ -70,6 +70,11 @@ export interface LevelsEvent {
   outDb: number;
 }
 
+export interface CostEvent {
+  seconds: number;
+  estimatedUsd: number;
+}
+
 /** A voice message row (camelCase mirror of `store::history::VoiceRecord`). */
 export interface VoiceRecord {
   id: number;
@@ -162,4 +167,6 @@ export const ipc = {
     cb: (e: VoiceProgressEvent) => void
   ): Promise<UnlistenFn> =>
     listen("voice:progress", (e) => cb(e.payload as VoiceProgressEvent)),
+  onCost: (cb: (e: CostEvent) => void): Promise<UnlistenFn> =>
+    listen("live:cost", (e) => cb(e.payload as CostEvent)),
 };
