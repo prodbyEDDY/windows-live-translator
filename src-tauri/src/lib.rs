@@ -25,6 +25,14 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             let settings = SettingsStore::open(app_data_dir.join("settings.json"))?;
 
+            // Crash recovery: if a previous run died while a peer app was ducked,
+            // restore those session volumes now (best-effort, before anything
+            // else can re-duck). Uses the same restore-file path the ducking
+            // thread writes (see `live_ctrl::DUCK_RESTORE_FILE`).
+            crate::audio::ducking::restore_after_crash(
+                &app_data_dir.join(crate::live_ctrl::DUCK_RESTORE_FILE),
+            );
+
             app.manage(AppState {
                 settings,
                 live: std::sync::Mutex::new(None),
