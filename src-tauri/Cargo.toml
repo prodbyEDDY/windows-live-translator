@@ -42,6 +42,15 @@ windows = { version = "0.62.2", features = ["Win32_Media_Audio", "Win32_System_C
 tokio-util = "0.7.18"
 # PINNED: time 0.3.48 has an E0119 coherence regression (time-rs/time#783) breaking tauri 2.11; unpin when a fixed time release ships
 time = { version = "=0.3.47", features = ["macros", "formatting", "parsing", "local-offset", "serde-human-readable"] }
+# Opus voice codec. PINNED at 0.2 because it resolves audiopus_sys 0.1.8, which
+# builds libopus WITHOUT cmake; 0.3 pulls audiopus_sys 0.2.x which requires cmake
+# (not installed on the build machine). Do not bump to 0.3 without cmake.
+audiopus = "0.2"
+# Pure-Rust Ogg page framing (PacketWriter); avoids hand-rolling page CRCs.
+ogg = "0.9"
+# Best-effort media duration probing. Defaults cover wav/flac/ogg/vorbis/pcm;
+# add mp3 + isomp4 (m4a/aac) explicitly for the formats voice messages may use.
+symphonia = { version = "0.5", features = ["mp3", "isomp4"] }
 
 [dev-dependencies]
 hound = "3.5.1"
