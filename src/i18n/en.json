@@ -52,7 +52,8 @@
       "systemDefault": "System default",
       "cableInstalled": "installed",
       "cableNotFound": "not found",
-      "wizardButton": "Setup wizard"
+      "wizardButton": "Setup wizard",
+      "deviceMissing": "Saved device not found — using the system default"
     },
     "translation": {
       "echoTargetLanguage": "Echo peer speech",
@@ -111,7 +112,8 @@
       "allWorks": "Everything works ✓",
       "zoomHeading": "Zoom / WhatsApp setup",
       "zoomBody": "In Zoom/WhatsApp, select the microphone: CABLE Output (VB-Audio Virtual Cable).",
-      "zoomNote": "The translator must be running (the \"Start\" button on the main screen)."
+      "zoomNote": "The translator must be running (the \"Start\" button on the main screen).",
+      "finishFailed": "Could not complete setup. Please try again."
     }
   },
   "voice": {
@@ -140,6 +142,7 @@
     "dragDisclaimer": "Will arrive as an audio file, not a voice note",
     "saveAs": "Save as…",
     "retry": "Retry",
+    "recordCapReached": "Recording stopped: 5-minute limit reached",
     "error": {
       "alreadyRecording": "Recording is already in progress",
       "tooShort": "Recording is too short",
@@ -188,6 +191,7 @@
     "sessionConnecting": "connecting",
     "sessionRunning": "running",
     "sessionReconnecting": "reconnecting",
+    "statusError": "error",
     "levelMic": "Mic",
     "levelApp": "App",
     "costTooltip": "Estimated cost at $0.023/min per direction (public preview pricing)",
@@ -195,7 +199,9 @@
       "noApiKey": "Add an API key in Settings",
       "alreadyRunning": "Translation is already running",
       "cableMissing": "VB-CABLE not found — run Setup Wizard",
-      "noAppSelected": "Select an app to capture first"
+      "noAppSelected": "Select an app to capture first",
+      "sourceLost": "Audio source lost — session stopped",
+      "sessionFailed": "Session ended with an error"
     },
     "pickAppPlaceholder": "Pick an application…"
   }

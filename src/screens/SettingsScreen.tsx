@@ -93,7 +93,7 @@ function SettingSwitch({
   );
 }
 
-function DeviceSelect({
+export function DeviceSelect({
   value,
   onChange,
   label,
@@ -108,11 +108,19 @@ function DeviceSelect({
   sysDefault: string;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
+  // A saved device id that no longer exists among the live options (e.g. an
+  // unplugged USB mic). Fall back to the system-default selection and warn so
+  // the user isn't silently routed to a device they didn't pick.
+  const missing =
+    value != null && !options.some((o) => o.id === value);
+  const selectedKey = missing ? "__default__" : (value ?? "__default__");
+
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-[13px] text-muted">{label}</label>
       <SelectRoot
-        selectedKey={value ?? "__default__"}
+        selectedKey={selectedKey}
         onSelectionChange={(key) =>
           onChange(key === "__default__" ? null : String(key))
         }
@@ -140,6 +148,9 @@ function DeviceSelect({
           </ListBox>
         </SelectPopover>
       </SelectRoot>
+      {missing && (
+        <p className="text-[12px] text-muted">{t("settings.audio.deviceMissing")}</p>
+      )}
     </div>
   );
 }

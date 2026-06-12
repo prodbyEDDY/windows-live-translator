@@ -1,22 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ListBox,
-  ListBoxItem,
-  SelectRoot,
-  SelectIndicator,
-  SelectPopover,
-  SelectTrigger,
-  SelectValue,
-  Spinner,
-} from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
 import { ApiKeyField } from "../components/ApiKeyField";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { WaveformGlyph, IconCheck } from "../components/Icons";
-import { buildDeviceOptions } from "./SettingsScreen";
+import { buildDeviceOptions, DeviceSelect } from "./SettingsScreen";
 import { looksLikeHeadphones } from "../lib/echo";
 import { ipc } from "../lib/ipc";
 import {
@@ -47,6 +38,8 @@ export function WizardScreen() {
   const setScreen = useAppStore((s) => s.setScreen);
 
   const [stepIdx, setStepIdx] = useState(0);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
   const step = WIZARD_STEPS[stepIdx];
 
   if (!settings) {
@@ -71,9 +64,27 @@ export function WizardScreen() {
   }
 
   async function finish() {
-    await stopLive();
-    await patchSettings({ wizardDone: true });
-    setScreen("live");
+    if (finishing) return;
+    setFinishing(true);
+    setFinishError(null);
+    try {
+      await stopLive();
+      await patchSettings({ wizardDone: true });
+      // patchSettings swallows IPC failures into the store's lastError and
+      // rolls back its optimistic mutation, so confirm the persist actually
+      // landed before leaving the wizard — otherwise the user would be dropped
+      // into the app with setup still marked incomplete.
+      if (!useAppStore.getState().settings?.wizardDone) {
+        setFinishError(t("wizard.test.finishFailed"));
+        return;
+      }
+      setScreen("live");
+    } catch {
+      // Defensive: any unexpected throw must keep the user in the wizard.
+      setFinishError(t("wizard.test.finishFailed"));
+    } finally {
+      setFinishing(false);
+    }
   }
 
   const stepTitles: Record<string, string> = {
@@ -118,6 +129,10 @@ export function WizardScreen() {
             />
           )}
 
+          {finishError && (
+            <Banner tone="danger" description={finishError} />
+          )}
+
           {/* ---- Navigation ---- */}
           <div className="flex items-center justify-between pt-2 border-t border-hairline">
             <button
@@ -131,7 +146,8 @@ export function WizardScreen() {
             {step === "test" ? (
               <button
                 onClick={() => void finish()}
-                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium transition-colors"
+                disabled={finishing}
+                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors"
               >
                 {t("wizard.test.allWorks")}
               </button>
@@ -251,8 +267,11 @@ function StepCable({
     const id = setInterval(() => {
       ipc
         .wizardState()
-        .then(() => {
-          if (!cancelled) void refreshDevices();
+        .then((res) => {
+          // Only refresh devices once the cable has actually appeared — that
+          // refresh flips the store's `cablePresent`, re-runs this effect and
+          // stops the poll. Polling refreshDevices unconditionally was wasteful.
+          if (!cancelled && res.cablePresent) void refreshDevices();
         })
         .catch(() => {});
     }, CABLE_POLL_MS);
@@ -376,62 +395,25 @@ function StepDevices({ t }: { t: (k: string) => string }) {
       : (outputDevices.find((d) => d.id === settings.outputId)?.name ?? null);
   const echoWarning = outputName != null && !looksLikeHeadphones(outputName);
 
-  function deviceSelect(
-    value: string | null,
-    onChange: (v: string | null) => void,
-    label: string,
-    options: Array<{ id: string | null; name: string }>
-  ) {
-    return (
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[13px] text-muted">{label}</label>
-        <SelectRoot
-          selectedKey={value ?? "__default__"}
-          onSelectionChange={(key) =>
-            onChange(key === "__default__" ? null : String(key))
-          }
-          aria-label={label}
-          onOpenChange={(open) => {
-            if (open) void refreshDevices();
-          }}
-        >
-          <SelectTrigger className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
-            <SelectValue className="flex-1 text-left truncate" />
-            <SelectIndicator />
-          </SelectTrigger>
-          <SelectPopover>
-            <ListBox items={options} className="max-h-72 overflow-y-auto">
-              {(item) => (
-                <ListBoxItem
-                  key={item.id ?? "__default__"}
-                  id={item.id ?? "__default__"}
-                  textValue={item.id == null ? sysDefault : item.name}
-                >
-                  {item.id == null ? sysDefault : item.name}
-                </ListBoxItem>
-              )}
-            </ListBox>
-          </SelectPopover>
-        </SelectRoot>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[13px] text-muted leading-relaxed">{t("wizard.devices.desc")}</p>
-      {deviceSelect(
-        settings.micId,
-        (v) => void patchSettings({ micId: v }),
-        t("settings.audio.mic"),
-        micOptions
-      )}
-      {deviceSelect(
-        settings.outputId,
-        (v) => void patchSettings({ outputId: v }),
-        t("settings.audio.output"),
-        outputOptions
-      )}
+      <DeviceSelect
+        value={settings.micId}
+        onChange={(v) => void patchSettings({ micId: v })}
+        label={t("settings.audio.mic")}
+        options={micOptions}
+        sysDefault={sysDefault}
+        onOpen={() => void refreshDevices()}
+      />
+      <DeviceSelect
+        value={settings.outputId}
+        onChange={(v) => void patchSettings({ outputId: v })}
+        label={t("settings.audio.output")}
+        options={outputOptions}
+        sysDefault={sysDefault}
+        onOpen={() => void refreshDevices()}
+      />
       {echoWarning && (
         <Banner
           tone="warn"
@@ -469,6 +451,7 @@ function StepTest({
   const phase = liveState?.phase ?? "off";
   const isRunning =
     phase === "running" || phase === "connecting" || phase === "reconnecting";
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -477,20 +460,28 @@ function StepTest({
   }, [stopLive]);
 
   async function handleStart() {
-    clearTranscript();
-    await startLive(buildTestConfig(settings));
+    if (starting) return;
+    setStarting(true);
+    try {
+      clearTranscript();
+      await startLive(buildTestConfig(settings));
+    } finally {
+      setStarting(false);
+    }
   }
 
   function statusLabel(): string {
     if (phase === "running") return t("live.sessionRunning");
     if (phase === "connecting") return t("live.sessionConnecting");
     if (phase === "reconnecting") return t("live.sessionReconnecting");
+    if (phase === "error") return t("live.statusError");
     return t("live.sessionOff");
   }
   function statusTone(): string {
     if (phase === "running") return "bg-ok/10 text-ok";
     if (phase === "connecting" || phase === "reconnecting")
       return "bg-warn/10 text-[#8a5d0a]";
+    if (phase === "error") return "bg-danger/10 text-danger";
     return "bg-stone-100 text-muted";
   }
 
@@ -509,7 +500,8 @@ function StepTest({
         ) : (
           <button
             onClick={() => void handleStart()}
-            className="px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium transition-colors"
+            disabled={starting}
+            className="px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors"
           >
             {t("wizard.test.start")}
           </button>

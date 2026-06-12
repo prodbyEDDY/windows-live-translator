@@ -52,7 +52,8 @@
       "systemDefault": "Системное по умолчанию",
       "cableInstalled": "установлен",
       "cableNotFound": "не найден",
-      "wizardButton": "Мастер настройки"
+      "wizardButton": "Мастер настройки",
+      "deviceMissing": "Сохранённое устройство не найдено — используется системное по умолчанию"
     },
     "translation": {
       "echoTargetLanguage": "Повторять речь собеседника",
@@ -111,7 +112,8 @@
       "allWorks": "Всё работает ✓",
       "zoomHeading": "Настройка Zoom / WhatsApp",
       "zoomBody": "В Zoom/WhatsApp выберите микрофон: CABLE Output (VB-Audio Virtual Cable).",
-      "zoomNote": "Переводчик должен быть запущен (кнопка «Начать» на главном экране)."
+      "zoomNote": "Переводчик должен быть запущен (кнопка «Начать» на главном экране).",
+      "finishFailed": "Не удалось завершить настройку. Попробуйте ещё раз."
     }
   },
   "voice": {
@@ -140,6 +142,7 @@
     "dragDisclaimer": "Придёт как аудиофайл, не как голосовая заметка",
     "saveAs": "Сохранить как…",
     "retry": "Повторить",
+    "recordCapReached": "Запись остановлена: достигнут лимит 5 минут",
     "error": {
       "alreadyRecording": "Запись уже идёт",
       "tooShort": "Запись слишком короткая",
@@ -188,6 +191,7 @@
     "sessionConnecting": "подключение",
     "sessionRunning": "работает",
     "sessionReconnecting": "переподключение",
+    "statusError": "ошибка",
     "levelMic": "Мик",
     "levelApp": "Прил",
     "costTooltip": "Оценка стоимости по тарифу $0.023/мин за направление",
@@ -195,7 +199,9 @@
       "noApiKey": "Добавьте API-ключ в настройках",
       "alreadyRunning": "Перевод уже запущен",
       "cableMissing": "VB-CABLE не найден — запустите мастер настройки",
-      "noAppSelected": "Сначала выберите приложение для захвата"
+      "noAppSelected": "Сначала выберите приложение для захвата",
+      "sourceLost": "Источник звука пропал — сессия остановлена",
+      "sessionFailed": "Сессия завершилась с ошибкой"
     },
     "pickAppPlaceholder": "Выберите приложение…"
   }

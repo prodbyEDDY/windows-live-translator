@@ -94,6 +94,14 @@ export function HistoryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // Clear the pending search debounce on unmount so it can't fire a setState
+  // (loadCalls/loadVoice) on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   function handleSearchChange(value: string) {
     setSearch(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);

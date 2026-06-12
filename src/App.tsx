@@ -37,8 +37,7 @@ function App() {
         return <HistoryScreen />;
       case "settings":
         return <SettingsScreen />;
-      case "wizard":
-        return <WizardScreen />;
+      // "wizard" is handled by the early return below (full-window, no chrome).
     }
   }
 

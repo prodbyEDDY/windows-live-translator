@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
+import { Banner } from "../components/Banner";
 import { IconMic, IconStopSquare, IconDownload } from "../components/Icons";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
@@ -12,7 +13,6 @@ const MAX_RECORD_SECS = 300; // 5 minutes
 export function VoiceScreen() {
   const { t } = useTranslation();
 
-  const settings = useAppStore((s) => s.settings);
   const voiceMessages = useAppStore((s) => s.voiceMessages);
   const loadVoice = useAppStore((s) => s.loadVoice);
   const upsertVoice = useAppStore((s) => s.upsertVoice);
@@ -20,23 +20,36 @@ export function VoiceScreen() {
 
   // Drop-zone state
   const [isDragOver, setIsDragOver] = useState(false);
-  // Recording state
+  // Recording state. Seconds live in BOTH a ref (read synchronously by the
+  // interval / stop handler, no stale closure) and state (drives the display).
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
+  const recordingSecsRef = useRef(0);
+  const isRecordingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Local notice (e.g. the 5:00 auto-stop) so a silent truncation never happens.
+  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+
+  function setRecordingSecsBoth(v: number) {
+    recordingSecsRef.current = v;
+    setRecordingSecs(v);
+  }
 
   // Load messages on mount
   useEffect(() => {
     void loadVoice();
   }, [loadVoice]);
 
-  // Subscribe to drop events
+  // Subscribe to drop events ONCE on mount. The handler reads `peerLang` via
+  // the store at call time (no stale closure), so there's no re-registration
+  // gap when the language changes mid-session.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
+    let disposed = false;
 
     async function setupDrop() {
       const webview = getCurrentWebview();
-      unlistenFn = await webview.onDragDropEvent(async (event) => {
+      const un = await webview.onDragDropEvent(async (event) => {
         const payload = event.payload;
         if (payload.type === "over") {
           setIsDragOver(true);
@@ -53,7 +66,8 @@ export function VoiceScreen() {
           }
 
           for (const path of ok) {
-            const targetLang = settings?.peerLang ?? "en";
+            const targetLang =
+              useAppStore.getState().settings?.peerLang ?? "en";
             try {
               const id = await ipc.voiceImport(path, targetLang);
               const rec = await ipc.voiceGet(id);
@@ -64,33 +78,43 @@ export function VoiceScreen() {
           }
         }
       });
+      // Guard against a StrictMode double-mount unmounting before the await
+      // resolved — dispose immediately if so.
+      if (disposed) un();
+      else unlistenFn = un;
     }
 
     void setupDrop();
 
     return () => {
+      disposed = true;
       if (unlistenFn) unlistenFn();
     };
-  }, [settings?.peerLang, setLastError, t, upsertVoice]);
+    // Mount-only: the handler reads dynamic state from the store at call time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Recording timer
+  // Recording timer. The interval reads/writes seconds via the ref and, on
+  // reaching the cap, calls handleStopRecording DIRECTLY (not inside a setState
+  // updater) so the auto-stop runs exactly once.
   useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
-        setRecordingSecs((s) => {
-          if (s + 1 >= MAX_RECORD_SECS) {
-            void handleStopRecording();
-            return MAX_RECORD_SECS;
-          }
-          return s + 1;
-        });
+        const next = recordingSecsRef.current + 1;
+        if (next >= MAX_RECORD_SECS) {
+          setRecordingSecsBoth(MAX_RECORD_SECS);
+          setRecordingNotice(t("voice.recordCapReached"));
+          void handleStopRecording();
+        } else {
+          setRecordingSecsBoth(next);
+        }
       }, 1000);
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      setRecordingSecs(0);
+      setRecordingSecsBoth(0);
     }
 
     return () => {
@@ -102,11 +126,21 @@ export function VoiceScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecording]);
 
+  function startRecordingState() {
+    isRecordingRef.current = true;
+    setIsRecording(true);
+  }
+  function stopRecordingState() {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+  }
+
   async function handleStartRecording() {
-    const micId = settings?.micId ?? null;
+    const micId = useAppStore.getState().settings?.micId ?? null;
+    setRecordingNotice(null);
     try {
       await ipc.voiceRecordStart(micId);
-      setIsRecording(true);
+      startRecordingState();
     } catch (e) {
       const msg = String(e);
       if (msg.includes("already_recording")) {
@@ -118,11 +152,15 @@ export function VoiceScreen() {
   }
 
   async function handleStopRecording() {
-    if (!isRecording) return;
-    setIsRecording(false);
-    const myLang = settings?.myLang ?? "ru";
-    const peerLang = settings?.peerLang ?? "en";
-    const ttsVoice = settings?.ttsVoice ?? "Kore";
+    // Read the live flag via the ref so the interval-driven auto-stop isn't
+    // blocked by a stale closure value.
+    if (!isRecordingRef.current) return;
+    stopRecordingState();
+    // Read languages/voice via the store (no stale closure) at stop time.
+    const cur = useAppStore.getState().settings;
+    const myLang = cur?.myLang ?? "ru";
+    const peerLang = cur?.peerLang ?? "en";
+    const ttsVoice = cur?.ttsVoice ?? "Kore";
     try {
       const id = await ipc.voiceRecordStop(myLang, peerLang, ttsVoice);
       const rec = await ipc.voiceGet(id);
@@ -194,6 +232,17 @@ export function VoiceScreen() {
             </div>
           </div>
         </div>
+
+        {/* Auto-stop / cap notice — truncation is never silent. */}
+        {recordingNotice && (
+          <div className="shrink-0">
+            <Banner
+              tone="warn"
+              description={recordingNotice}
+              onDismiss={() => setRecordingNotice(null)}
+            />
+          </div>
+        )}
 
         {/* Drop hint */}
         <div className="flex items-center justify-center gap-2 rounded-card border border-dashed border-hairline py-2.5 text-[12px] text-muted shrink-0">

@@ -69,6 +69,7 @@ export function Header() {
   const startLiveSession = useAppStore((s) => s.startLiveSession);
   const stopLiveSession = useAppStore((s) => s.stopLiveSession);
   const setDurationSec = useAppStore((s) => s.setDurationSec);
+  const starting = useAppStore((s) => s.starting);
 
   const phase = liveState?.phase ?? "off";
   const isRunning =
@@ -144,8 +145,9 @@ export function Header() {
           ) : startResult.ok ? (
             <Button
               variant="primary"
+              isDisabled={starting}
               onPress={() => void startLiveSession()}
-              className="h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-wide"
+              className="h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-wide disabled:opacity-60"
             >
               {t("common.start")}
             </Button>
@@ -196,6 +198,11 @@ function SessionStatusChip({
     text = "text-warn";
     bg = "bg-[#b97d10]/8";
     pulse = true;
+  } else if (phase === "error") {
+    label = t("live.statusError");
+    dot = "bg-danger";
+    text = "text-danger";
+    bg = "bg-danger/8";
   }
   return (
     <span
