@@ -1538,6 +1538,8 @@ pub async fn wizard_install_cable() -> Result<(), String> {
 
 - [ ] **Step 16.2: Run `cargo test` + `npm test` + `cargo clippy -- -D warnings`; fix everything.**
 
+- [ ] **Step 16.2b: Make `live_start`/`live_stop` async commands.** They are sync today and run inline on the event-loop thread, freezing the UI for the WASAPI init/join duration (~100–600 ms, worse on flaky drivers). Convert both to `async fn` + `tauri::async_runtime::spawn_blocking` around `LiveController::start/stop` (note: `block_on` inside `spawn_blocking` is safe; `block_on` directly inside an async command would panic).
+
 - [ ] **Step 16.3: Execute checklist items that are automatable locally** (devices, key flows, ru/en render); report which items need the user's real call to verify.
 
 - [ ] **Step 16.4: Commit + tag.** `chore: stage 1 hardening` and `git tag v0.1.0-stage1`

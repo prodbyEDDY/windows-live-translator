@@ -83,8 +83,9 @@ pub fn live_start(
     state: State<'_, AppState>,
     cfg: LiveConfig,
 ) -> Result<(), String> {
-    // Reject a second concurrent session before doing any work.
-    let mut guard = state.live.lock().unwrap();
+    // Reject a second concurrent session before doing any work. Recover from
+    // poisoning: a panic mid-start must not brick live commands until restart.
+    let mut guard = state.live.lock().unwrap_or_else(|p| p.into_inner());
     if guard.is_some() {
         return Err("already_running".to_string());
     }
@@ -101,7 +102,7 @@ pub fn live_start(
 pub fn live_stop(state: State<'_, AppState>) {
     // Take the controller out under the lock, then drop the lock before the
     // (blocking) teardown so a concurrent `live_start` isn't starved.
-    let controller = state.live.lock().unwrap().take();
+    let controller = state.live.lock().unwrap_or_else(|p| p.into_inner()).take();
     if let Some(controller) = controller {
         controller.stop();
     }
