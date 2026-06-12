@@ -71,7 +71,10 @@ pub struct PlaybackHandle {
     pub tx: Sender<Vec<i16>>,
     /// Real queued audio awaiting render, in 48 kHz mono samples (the FIFO
     /// length). Drives ducking — reflects buffered translation only, never the
-    /// silence we write to keep the engine primed.
+    /// silence we write to keep the engine primed. Known bias: samples still
+    /// inside the resampler (sub-block residual + filter delay, a few ms) are
+    /// not counted, so this can read 0 slightly before audio truly finishes —
+    /// negligible next to the ducking release delay (~400 ms).
     pub queued_samples: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
     join: Option<std::thread::JoinHandle<()>>,
