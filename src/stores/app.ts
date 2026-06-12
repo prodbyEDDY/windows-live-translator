@@ -1,0 +1,141 @@
+import { create } from "zustand";
+import i18next from "../i18n";
+import {
+  ipc,
+  type Settings,
+  type KeyStatus,
+  type DevicesPayload,
+  type AppSession,
+  type LiveStateEvent,
+  type LevelsEvent,
+  type LiveConfig,
+} from "../lib/ipc";
+import { appendTranscript, type TranscriptLine } from "../lib/transcript";
+
+export type Screen = "live" | "voice" | "history" | "settings" | "wizard";
+
+interface AppState {
+  settings: Settings | null;
+  keyStatus: KeyStatus | null;
+  devices: DevicesPayload | null;
+  apps: AppSession[];
+  liveState: LiveStateEvent | null;
+  transcript: TranscriptLine[];
+  levels: LevelsEvent | null;
+  screen: Screen;
+  lastError: string | null;
+
+  init: () => Promise<void>;
+  patchSettings: (p: Partial<Settings>) => Promise<void>;
+  refreshApps: () => Promise<void>;
+  setScreen: (screen: Screen) => void;
+  startLive: (cfg: LiveConfig) => Promise<void>;
+  stopLive: () => Promise<void>;
+  clearTranscript: () => void;
+}
+
+let initialized = false;
+let transcriptIdSeq = 0;
+function nextId() {
+  return ++transcriptIdSeq;
+}
+
+export const useAppStore = create<AppState>((set, _get) => ({
+  settings: null,
+  keyStatus: null,
+  devices: null,
+  apps: [],
+  liveState: null,
+  transcript: [],
+  levels: null,
+  screen: "live",
+  lastError: null,
+
+  init: async () => {
+    if (initialized) return;
+    initialized = true;
+
+    try {
+      const [settings, keyStatus, devices] = await Promise.all([
+        ipc.settingsGet(),
+        ipc.apiKeyStatus(),
+        ipc.devicesList(),
+      ]);
+
+      set({ settings, keyStatus, devices });
+
+      // Apply UI language from settings
+      if (settings.uiLang) {
+        await i18next.changeLanguage(settings.uiLang);
+      }
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+
+    // Subscribe to all events (once, guarded by module flag)
+    ipc.onTranscript((ev) => {
+      set((state) => ({
+        transcript: appendTranscript(state.transcript, ev, nextId),
+      }));
+    });
+
+    ipc.onLiveState((ev) => {
+      set({ liveState: ev });
+    });
+
+    ipc.onLevels((ev) => {
+      set({ levels: ev });
+    });
+
+    ipc.onDevicesChanged((ev) => {
+      set({ devices: ev });
+    });
+  },
+
+  patchSettings: async (p: Partial<Settings>) => {
+    // Optimistic update
+    set((state) => ({
+      settings: state.settings ? { ...state.settings, ...p } : state.settings,
+    }));
+    try {
+      const updated = await ipc.settingsSet(p);
+      set({ settings: updated });
+      if (p.uiLang) {
+        await i18next.changeLanguage(p.uiLang);
+      }
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
+  refreshApps: async () => {
+    try {
+      const apps = await ipc.audioAppsList();
+      set({ apps });
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
+  setScreen: (screen: Screen) => set({ screen }),
+
+  startLive: async (cfg: LiveConfig) => {
+    set({ lastError: null });
+    try {
+      await ipc.liveStart(cfg);
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
+  stopLive: async () => {
+    set({ lastError: null });
+    try {
+      await ipc.liveStop();
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
+  clearTranscript: () => set({ transcript: [] }),
+}));

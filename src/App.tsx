@@ -1,50 +1,54 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { useAppStore } from "./stores/app";
+import { Sidebar } from "./components/Sidebar";
+import { LiveScreen } from "./screens/LiveScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
+import { VoiceScreen } from "./screens/VoiceScreen";
+import { HistoryScreen } from "./screens/HistoryScreen";
+import { WizardScreen } from "./screens/WizardScreen";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { t } = useTranslation();
+  const init = useAppStore((s) => s.init);
+  const settings = useAppStore((s) => s.settings);
+  const screen = useAppStore((s) => s.screen);
+  const setScreen = useAppStore((s) => s.setScreen);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  useEffect(() => {
+    init();
+  }, [init]);
+
+  // Force wizard screen until setup is done
+  useEffect(() => {
+    if (settings && !settings.wizardDone) {
+      setScreen("wizard");
+    }
+  }, [settings, setScreen]);
+
+  function renderScreen() {
+    switch (screen) {
+      case "live":
+        return <LiveScreen />;
+      case "voice":
+        return <VoiceScreen />;
+      case "history":
+        return <HistoryScreen />;
+      case "settings":
+        return <SettingsScreen />;
+      case "wizard":
+        return <WizardScreen />;
+    }
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <div className="flex flex-row min-h-screen bg-gray-50">
+      <title>{t("app.title")}</title>
+      {screen !== "wizard" && <Sidebar />}
+      <main className="flex flex-1 overflow-auto">
+        {renderScreen()}
+      </main>
+    </div>
   );
 }
 

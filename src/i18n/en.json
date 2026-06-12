@@ -1,0 +1,31 @@
+{
+  "nav": {
+    "live": "Live",
+    "voice": "Voice",
+    "history": "History",
+    "settings": "Settings"
+  },
+  "screen": {
+    "live": "Live Translation",
+    "voice": "Voice Profiles",
+    "history": "Translation History",
+    "settings": "Settings",
+    "wizard": "Initial Setup"
+  },
+  "common": {
+    "start": "Start",
+    "stop": "Stop",
+    "save": "Save",
+    "check": "Check",
+    "cancel": "Cancel",
+    "next": "Next",
+    "back": "Back",
+    "done": "Done",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  },
+  "app": {
+    "title": "Live Translator"
+  }
+}
