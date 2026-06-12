@@ -3,6 +3,7 @@ pub mod store;
 pub mod gemini;
 pub mod live_ctrl;
 pub mod ipc;
+pub mod wizard;
 
 use tauri::Manager;
 
@@ -52,6 +53,8 @@ pub fn run() {
             ipc::audio_apps_list,
             ipc::live_start,
             ipc::live_stop,
+            wizard::wizard_state,
+            wizard::wizard_install_cable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

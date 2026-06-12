@@ -80,6 +80,9 @@ export const ipc = {
   audioAppsList: () => invoke<AppSession[]>("audio_apps_list"),
   liveStart: (cfg: LiveConfig) => invoke<void>("live_start", { cfg }),
   liveStop: () => invoke<void>("live_stop"),
+  wizardState: () =>
+    invoke<{ keyPresent: boolean; cablePresent: boolean }>("wizard_state"),
+  wizardInstallCable: () => invoke<void>("wizard_install_cable"),
   onTranscript: (
     cb: (e: TranscriptEvent) => void
   ): Promise<UnlistenFn> =>

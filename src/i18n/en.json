@@ -68,6 +68,51 @@
       "version": "Version"
     }
   },
+  "wizard": {
+    "title": "Initial Setup",
+    "steps": {
+      "key": "API Key",
+      "cable": "VB-CABLE",
+      "devices": "Devices",
+      "test": "Test"
+    },
+    "key": {
+      "heading": "Step 1. Gemini API Key",
+      "desc": "Enter your Gemini key to enable speech recognition and translation.",
+      "getKey": "Get key at AI Studio",
+      "ready": "Key is valid — you can continue"
+    },
+    "cable": {
+      "heading": "Step 2. VB-CABLE Virtual Cable",
+      "desc": "VB-CABLE is a virtual audio device that routes the translated speech into Zoom, WhatsApp, and other apps.",
+      "notFound": "VB-CABLE not found",
+      "detected": "VB-CABLE installed",
+      "detectedDesc": "The virtual cable was detected. You can continue.",
+      "installButton": "Download and install",
+      "installing": "Installing...",
+      "installingHint": "The VB-Audio installer will open. Click \"Install Driver\" and confirm the UAC prompt.",
+      "errDownload": "Failed to download VB-CABLE. Check your internet connection or download it manually.",
+      "errCancelled": "Installation cancelled.",
+      "errNoInstaller": "Installer not found in the archive. Try downloading manually.",
+      "errGeneric": "Failed to install VB-CABLE.",
+      "openSite": "Open VB-Audio website",
+      "rebootHint": "The cable isn't detected yet — a reboot may be required."
+    },
+    "devices": {
+      "heading": "Step 3. Audio Devices",
+      "desc": "Choose your microphone and output device. Headphones are recommended to avoid echo."
+    },
+    "test": {
+      "heading": "Step 4. Test",
+      "instruction": "Say a phrase — you'll hear it translated into the peer's language.",
+      "start": "Start test",
+      "stop": "Stop test",
+      "allWorks": "Everything works ✓",
+      "zoomHeading": "Zoom / WhatsApp setup",
+      "zoomBody": "In Zoom/WhatsApp, select the microphone: CABLE Output (VB-Audio Virtual Cable).",
+      "zoomNote": "The translator must be running (the \"Start\" button on the main screen)."
+    }
+  },
   "live": {
     "myLang": "My language",
     "peerLang": "Peer language",

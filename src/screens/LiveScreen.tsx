@@ -22,8 +22,7 @@ import { LanguagePair } from "../components/LanguagePair";
 import { LevelMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { canStart } from "../lib/liveStart";
-
-const ECHO_REGEXP = /наушник|headphone|headset|earbud|airpod|buds/i;
+import { looksLikeHeadphones } from "../lib/echo";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -138,7 +137,7 @@ export function LiveScreen() {
   const showEchoWarning =
     !echoDismissed &&
     outputDeviceName != null &&
-    !ECHO_REGEXP.test(outputDeviceName);
+    !looksLikeHeadphones(outputDeviceName);
 
   // Map error keys to translated messages at render time
   function translateError(err: string | null): string | null {
