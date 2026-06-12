@@ -147,9 +147,10 @@ export function WizardScreen() {
               <button
                 onClick={() => void finish()}
                 disabled={finishing}
-                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50"
+                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
               >
-                {t("wizard.test.allWorks")}
+                {finishing && <Spinner size="sm" />}
+                {finishing ? t("common.loading") : t("wizard.test.allWorks")}
               </button>
             ) : (
               <button
@@ -180,7 +181,15 @@ function StepProgress({ current }: { current: number }) {
     t("wizard.steps.test"),
   ];
   return (
-    <div className="flex items-start">
+    <div
+      className="flex items-start"
+      role="progressbar"
+      aria-label={t("wizard.title")}
+      aria-valuemin={1}
+      aria-valuemax={labels.length}
+      aria-valuenow={current + 1}
+      aria-valuetext={labels[current]}
+    >
       {labels.map((label, i) => {
         const done = i < current;
         const active = i === current;
@@ -201,7 +210,7 @@ function StepProgress({ current }: { current: number }) {
               </div>
               <span
                 className={`text-[11px] text-center truncate max-w-16 ${
-                  active ? "text-ink font-medium" : "text-muted"
+                  active ? "text-ink font-medium" : "text-stone-500"
                 }`}
               >
                 {label}
@@ -502,9 +511,10 @@ function StepTest({
           <button
             onClick={() => void handleStart()}
             disabled={starting}
-            className="lt-press px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50"
+            className="lt-press px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
           >
-            {t("wizard.test.start")}
+            {starting && <Spinner size="sm" />}
+            {starting ? t("common.loading") : t("wizard.test.start")}
           </button>
         )}
         <span

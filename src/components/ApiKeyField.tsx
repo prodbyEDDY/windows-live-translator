@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@heroui/react";
 import { ipc, type KeyStatus } from "../lib/ipc";
 import { useAppStore } from "../stores/app";
+import { IconEye, IconEyeOff } from "./Icons";
 
 interface ApiKeyFieldProps {
   /** Optional callback invoked after the key is confirmed valid. */
@@ -50,11 +51,13 @@ export function ApiKeyField({ onValid }: ApiKeyFieldProps) {
             className="w-full h-10 pl-3.5 pr-10 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink placeholder:text-muted focus:border-cobalt/50 outline-none transition-colors font-mono"
           />
           <button
+            type="button"
             onClick={() => setShowKey((v) => !v)}
             aria-label={showKey ? t("settings.apiKey.hide") : t("settings.apiKey.show")}
+            aria-pressed={showKey}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
           >
-            {showKey ? "🙈" : "👁"}
+            {showKey ? <IconEyeOff size={17} /> : <IconEye size={17} />}
           </button>
         </div>
         <button

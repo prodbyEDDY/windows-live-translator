@@ -7,6 +7,7 @@ import {
   SelectRoot,
   SelectPopover,
   SelectTrigger,
+  Spinner,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -74,6 +75,7 @@ export function Header() {
   const liveState = useAppStore((s) => s.liveState);
   const appPid = useAppStore((s) => s.appPid);
   const screen = useAppStore((s) => s.screen);
+  const setScreen = useAppStore((s) => s.setScreen);
   const startLiveSession = useAppStore((s) => s.startLiveSession);
   const stopLiveSession = useAppStore((s) => s.stopLiveSession);
   const setDurationSec = useAppStore((s) => s.setDurationSec);
@@ -138,6 +140,17 @@ export function Header() {
 
       {/* Right: status + start/stop (start/stop only on live screen) */}
       <div className="flex items-center gap-3 shrink-0 w-56 justify-end">
+        {/* Compact "session running — open Live" pill: the only global stop/return
+            affordance when the user has navigated away from the Live screen. */}
+        {isRunning && screen !== "live" && (
+          <button
+            onClick={() => setScreen("live")}
+            className="lt-press inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-pill bg-ok/10 text-ok text-[11.5px] font-medium hover:bg-ok/15"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-ok lt-pulse-dot" />
+            {t("live.runningPill")}
+          </button>
+        )}
         <SessionStatusChip phase={phase} t={t} />
         {screen === "live" &&
           (isRunning ? (
@@ -155,17 +168,22 @@ export function Header() {
               variant="primary"
               isDisabled={starting}
               onPress={() => void startLiveSession()}
-              className="lt-press lt-glow h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-[0.04em] disabled:opacity-60"
+              className="lt-press lt-glow h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-[0.04em] disabled:opacity-60 inline-flex items-center gap-1.5"
             >
-              {t("common.start")}
+              {starting && <Spinner size="sm" />}
+              {starting ? t("common.loading") : t("common.start")}
             </Button>
           ) : (
+            // Disabled Start: aria-disabled (not the native disabled attr) + a
+            // guarded onClick keeps the button in the tab order so the tooltip
+            // explaining WHY it's blocked stays keyboard-reachable.
             <Tooltip>
               <TooltipTrigger>
                 <Button
                   variant="outline"
-                  isDisabled
-                  className="h-9 px-5 rounded-pill border-hairline text-stone-400 font-display text-[12px] tracking-[0.04em]"
+                  aria-disabled
+                  onPress={() => {}}
+                  className="h-9 px-5 rounded-pill border-hairline text-stone-400 font-display text-[12px] tracking-[0.04em] cursor-not-allowed"
                 >
                   {t("common.start")}
                 </Button>

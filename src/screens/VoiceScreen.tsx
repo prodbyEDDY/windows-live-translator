@@ -181,7 +181,7 @@ export function VoiceScreen() {
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-paper/80 backdrop-blur-[2px] pointer-events-none">
           <div className="flex flex-col items-center gap-3 rounded-card border-2 border-dashed border-cobalt bg-surface/90 px-12 py-9 shadow-studio">
-            <span className="font-display text-[56px] leading-none text-cobalt">
+            <span aria-hidden="true" className="font-display text-[56px] leading-none text-cobalt">
               <IconDownload size={56} />
             </span>
             <p className="font-display text-[18px] font-semibold text-cobalt-deep">
@@ -245,8 +245,12 @@ export function VoiceScreen() {
         )}
 
         {/* Drop hint */}
-        <div className="flex items-center justify-center gap-2 rounded-card border border-dashed border-stone-300 py-2.5 text-[12px] text-muted shrink-0">
-          <IconDownload size={14} />
+        <div
+          role="region"
+          aria-label={t("voice.dropHint")}
+          className="flex items-center justify-center gap-2 rounded-card border border-dashed border-stone-300 py-2.5 text-[12px] text-muted shrink-0"
+        >
+          <IconDownload size={14} aria-hidden="true" />
           {t("voice.dropHint")}
         </div>
 

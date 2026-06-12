@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AlertDialogBackdrop,
+  AlertDialogBody,
+  AlertDialogContainer,
+  AlertDialogDialog,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogHeading,
+  AlertDialogRoot,
+  AlertDialogTrigger,
+  Button,
   ListBox,
   ListBoxItem,
   SelectRoot,
@@ -17,12 +27,7 @@ import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { looksLikeHeadphones } from "../lib/echo";
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+import { formatDuration } from "../lib/format";
 
 export function LiveScreen() {
   const { t } = useTranslation();
@@ -43,6 +48,8 @@ export function LiveScreen() {
 
   // Dismissable echo warning
   const [echoDismissed, setEchoDismissed] = useState(false);
+  // Clear-transcript confirmation dialog
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const captureMode = settings?.captureMode ?? "system";
   const cablePresent = devices?.cablePresent ?? false;
@@ -57,13 +64,20 @@ export function LiveScreen() {
     outputDeviceName != null &&
     !looksLikeHeadphones(outputDeviceName);
 
-  // Map error keys to translated messages at render time
+  // Map error keys to translated messages at render time. Known backend codes
+  // map to friendly copy; any other raw string is wrapped in the generic
+  // fallback (STATE-6) so a bare backend token never reaches the banner.
   function translateError(err: string | null): string | null {
     if (!err) return null;
     if (err === "no_api_key") return t("live.error.noApiKey");
     if (err === "already_running") return t("live.error.alreadyRunning");
     if (err === "cable_missing") return t("live.error.cableMissing");
     if (err === "no_app_selected") return t("live.error.noAppSelected");
+    // Messages already produced through i18n (start with a localized sentence,
+    // not a snake_case token) pass through untouched; raw tokens get wrapped.
+    if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(err)) {
+      return t("live.error.generic", { raw: err });
+    }
     return err;
   }
   const displayedError = translateError(lastError);
@@ -114,7 +128,10 @@ export function LiveScreen() {
             }}
           >
             <SelectTrigger className="lt-press min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-2.5 pr-3.5 rounded-pill border border-hairline bg-surface text-[13px] text-ink hover:border-stone-300">
-              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md bg-cobalt-tint text-cobalt text-[11px]">
+              <span
+                aria-hidden="true"
+                className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md bg-cobalt-tint text-cobalt text-[11px]"
+              >
                 ♪
               </span>
               <SelectValue className="flex-1 min-w-0 text-left truncate" />
@@ -129,17 +146,30 @@ export function LiveScreen() {
                 >
                   {systemAudioLabel}
                 </ListBoxItem>
-                {apps.map((app) => (
+                {apps.length === 0 ? (
                   <ListBoxItem
-                    key={String(app.pid)}
-                    id={String(app.pid)}
-                    textValue={`${app.name} (${app.pid})`}
+                    key="__no_apps__"
+                    id="__no_apps__"
+                    isDisabled
+                    textValue={t("live.noAppsHint")}
                   >
-                    {app.active ? "🔊 " : ""}
-                    {app.name}{" "}
-                    <span className="font-mono text-muted">({app.pid})</span>
+                    <span className="text-muted text-[12px]">
+                      {t("live.noAppsHint")}
+                    </span>
                   </ListBoxItem>
-                ))}
+                ) : (
+                  apps.map((app) => (
+                    <ListBoxItem
+                      key={String(app.pid)}
+                      id={String(app.pid)}
+                      textValue={`${app.name} (${app.pid})`}
+                    >
+                      {app.active ? "🔊 " : ""}
+                      {app.name}{" "}
+                      <span className="font-mono text-muted">({app.pid})</span>
+                    </ListBoxItem>
+                  ))
+                )}
               </ListBox>
             </SelectPopover>
           </SelectRoot>
@@ -191,12 +221,56 @@ export function LiveScreen() {
           <TranscriptFeed lines={transcript} />
           {transcript.length > 0 && (
             <div className="absolute top-2.5 right-2.5 z-10">
-              <button
-                onClick={clearTranscript}
-                className="lt-press px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100"
+              <AlertDialogRoot
+                isOpen={clearDialogOpen}
+                onOpenChange={(open) => {
+                  if (!open) setClearDialogOpen(false);
+                }}
               >
-                {t("live.clearTranscript")}
-              </button>
+                <AlertDialogTrigger>
+                  <button
+                    onClick={() => setClearDialogOpen(true)}
+                    className="lt-press px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100"
+                  >
+                    {t("live.clearTranscript")}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogBackdrop isDismissable>
+                  <AlertDialogContainer>
+                    <AlertDialogDialog>
+                      <AlertDialogHeader>
+                        <AlertDialogHeading>
+                          {t("live.confirmClearTitle")}
+                        </AlertDialogHeading>
+                      </AlertDialogHeader>
+                      <AlertDialogBody>
+                        <p className="text-sm text-muted">
+                          {t("live.confirmClearBody")}
+                        </p>
+                      </AlertDialogBody>
+                      <AlertDialogFooter>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onPress={() => setClearDialogOpen(false)}
+                        >
+                          {t("common.cancel")}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onPress={() => {
+                            clearTranscript();
+                            setClearDialogOpen(false);
+                          }}
+                        >
+                          {t("live.confirmClearOk")}
+                        </Button>
+                      </AlertDialogFooter>
+                    </AlertDialogDialog>
+                  </AlertDialogContainer>
+                </AlertDialogBackdrop>
+              </AlertDialogRoot>
             </div>
           )}
         </div>
@@ -263,7 +337,7 @@ function TimeCostZone() {
   const durationSec = useAppStore((s) => s.durationSec);
   return (
     <div className="flex items-center gap-2.5">
-      <span className="font-mono text-[12px] text-ink tabular-nums">
+      <span className="font-mono text-[12px] text-ink tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
         {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
       </span>
       {cost != null && (

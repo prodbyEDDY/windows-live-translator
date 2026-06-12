@@ -7,6 +7,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ipc, type VoiceRecord } from "../lib/ipc";
 import { IconGrip, IconDownload } from "./Icons";
+import { localeFor } from "../lib/format";
 
 // Bundled drag thumbnail — resolved once and cached at module scope.
 let dragIconPromise: Promise<string | null> | null = null;
@@ -32,7 +33,7 @@ function errorMessage(stage: string): string | null {
 }
 
 export function VoiceCard({ record }: VoiceCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
   const dragIconRef = useRef<string | null>(null);
@@ -52,11 +53,14 @@ export function VoiceCard({ record }: VoiceCardProps) {
   const accent = isIn ? "var(--color-tangerine)" : "var(--color-cobalt)";
   const kindLabel = isIn ? t("voice.kindIn") : t("voice.kindOut");
 
-  const createdAt = new Date(record.createdAt).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const createdAt = new Date(record.createdAt).toLocaleTimeString(
+    localeFor(i18n.language),
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }
+  );
 
   const stageName = (() => {
     if (record.stage.startsWith("error")) return t("voice.stageLabel.error");
@@ -260,15 +264,24 @@ export function VoiceCard({ record }: VoiceCardProps) {
         <div className="flex flex-col gap-1.5 pt-3 border-t border-hairline">
           <div className="flex items-center gap-2 flex-wrap">
             <div
-              className="lt-card lt-card-hover group flex items-center gap-2 pl-2.5 pr-3.5 h-9 rounded-pill border border-dashed border-cobalt/40 bg-cobalt-tint/50 text-[12px] font-medium text-cobalt-deep cursor-grab active:cursor-grabbing select-none"
+              role="button"
+              tabIndex={0}
+              aria-label={t("voice.dragHandle").replace("⠿ ", "")}
+              className="lt-card lt-card-hover group flex items-center gap-2 pl-2.5 pr-3.5 h-9 rounded-pill border border-dashed border-cobalt/40 bg-cobalt-tint/50 text-[12px] font-medium text-cobalt-deep cursor-grab active:cursor-grabbing select-none focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
               onMouseDown={() => void handleDragOut()}
               onDragStart={(e) => {
                 e.preventDefault();
                 void handleDragOut();
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  void handleDragOut();
+                }
+              }}
               title={t("voice.dragHandle")}
             >
-              <IconGrip size={15} className="text-cobalt" />
+              <IconGrip size={15} className="text-cobalt" aria-hidden="true" />
               <span>{t("voice.dragHandle").replace("⠿ ", "")}</span>
             </div>
             <button

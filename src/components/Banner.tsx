@@ -44,7 +44,7 @@ export function Banner({ tone, title, description, action, onDismiss }: BannerPr
       {onDismiss && (
         <button
           onClick={onDismiss}
-          aria-label={t("common.cancel")}
+          aria-label={t("common.close")}
           className="shrink-0 text-muted hover:text-ink transition-colors mt-0.5"
         >
           <IconCross size={15} />

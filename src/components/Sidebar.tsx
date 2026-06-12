@@ -36,7 +36,10 @@ export function Sidebar() {
   const keyValid = keyStatus?.state === "valid";
 
   return (
-    <nav className="flex flex-col w-56 shrink-0 bg-paper border-r border-hairline py-3">
+    <nav
+      aria-label={t("live.navLabel")}
+      className="flex flex-col w-56 shrink-0 bg-paper border-r border-hairline py-3"
+    >
       <div className="flex-1 flex flex-col gap-0.5 px-2">
         {NAV_ITEMS.map((item) => {
           const active = screen === item.id;
@@ -75,7 +78,7 @@ export function Sidebar() {
           ok={keyValid}
           onClick={() => setScreen("settings")}
         />
-        <span className="font-mono text-[10px] text-stone-400 tracking-tight px-1.5 pt-1.5">
+        <span className="font-mono text-[11px] text-stone-500 tracking-tight px-1.5 pt-1.5">
           v0.3.0
         </span>
       </div>

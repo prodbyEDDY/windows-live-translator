@@ -21,21 +21,17 @@ import {
 import { ipc, type CallRecord, type VoiceRecord } from "../lib/ipc";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { VoiceCard } from "../components/VoiceCard";
+import { Banner } from "../components/Banner";
 import { LangPairPill } from "../components/LangPairPill";
 import { IconSearch } from "../components/Icons";
 import { previewText } from "../lib/history";
 import { useAppStore } from "../stores/app";
+import { formatDuration, localeFor } from "../lib/format";
 import type { TranscriptLine } from "../lib/transcript";
 
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function formatDate(iso: string): string {
+function formatDate(iso: string, lang: string | undefined): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(localeFor(lang), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -45,9 +41,10 @@ function formatDate(iso: string): string {
 }
 
 export function HistoryScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [tab, setTab] = useState<"calls" | "voice">("calls");
+  const [clearedToast, setClearedToast] = useState(false);
   const [search, setSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -175,6 +172,9 @@ export function HistoryScreen() {
     setExpandedCallIds(new Set());
     setFullCalls(new Map());
     setLoadingCallIds(new Set());
+    // Inline success feedback (auto-hides) so the clear isn't silent.
+    setClearedToast(true);
+    setTimeout(() => setClearedToast(false), 2500);
   }
 
   return (
@@ -247,6 +247,17 @@ export function HistoryScreen() {
           </AlertDialogRoot>
         </div>
 
+        {/* ---- Clear success feedback (auto-hides) ---- */}
+        {clearedToast && (
+          <div className="shrink-0">
+            <Banner
+              tone="ok"
+              description={t("history.cleared")}
+              onDismiss={() => setClearedToast(false)}
+            />
+          </div>
+        )}
+
         {/* ---- Tabs ---- */}
         <TabsRoot
           selectedKey={tab}
@@ -299,12 +310,16 @@ export function HistoryScreen() {
                       <button
                         className="flex items-center gap-3 h-11 px-4 text-left hover:bg-stone-50 transition-colors w-full"
                         onClick={() => toggleCall(call.id)}
+                        aria-expanded={expanded}
                       >
-                        <span className="text-[9px] text-stone-400 shrink-0 select-none w-3">
+                        <span
+                          aria-hidden="true"
+                          className="text-[11px] text-stone-500 shrink-0 select-none w-3"
+                        >
                           {expanded ? "▼" : "▶"}
                         </span>
                         <span className="font-mono text-[12px] text-muted shrink-0 tabular-nums">
-                          {formatDate(call.startedAt)}
+                          {formatDate(call.startedAt, i18n.language)}
                         </span>
                         <LangPairPill from={call.myLang} to={call.peerLang} />
                         {preview && !expanded && (

@@ -24,9 +24,7 @@ export function filterAudioPaths(paths: string[]): {
 
 /**
  * Formats seconds as mm:ss (e.g. 65 → "01:05").
+ * Thin alias over the shared {@link formatDuration} so the recording timer and
+ * the Live/History timers all render identically.
  */
-export function formatRecordingTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+export { formatDuration as formatRecordingTime } from "./format";
