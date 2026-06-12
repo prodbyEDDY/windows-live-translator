@@ -237,17 +237,21 @@ export function VoiceCard({ record }: VoiceCardProps) {
         </div>
       )}
 
-      {/* ---- Audio players ---- */}
+      {/* ---- Audio players (lazy: mount real <audio> only on first play) ---- */}
       {sourceUrl && (
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted">{kindLabel}</span>
-          <audio controls src={sourceUrl} className="w-full max-w-md h-9" />
+          <LazyAudio src={sourceUrl} label={kindLabel} playLabel={t("voice.play")} />
         </div>
       )}
       {translatedUrl && (
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted">{t("voice.translationLabel")}</span>
-          <audio controls src={translatedUrl} className="w-full max-w-md h-9" />
+          <LazyAudio
+            src={translatedUrl}
+            label={t("voice.translationLabel")}
+            playLabel={t("voice.play")}
+          />
         </div>
       )}
 
@@ -279,6 +283,50 @@ export function VoiceCard({ record }: VoiceCardProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Lazy audio gate. Shows a small play-pill (▶ + label) and only mounts the real
+ * <audio> element after the first click — so a long history list doesn't eagerly
+ * create dozens of media elements (and fetch their metadata) up front. Layout
+ * stays stable: the pill occupies the same 36px-tall row the player will.
+ */
+function LazyAudio({
+  src,
+  label,
+  playLabel,
+}: {
+  src: string;
+  label: string;
+  playLabel: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  if (mounted) {
+    return (
+      <audio
+        controls
+        autoPlay
+        preload="none"
+        src={src}
+        className="w-full max-w-md h-9"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setMounted(true)}
+      aria-label={`${playLabel}: ${label}`}
+      className="lt-press inline-flex items-center gap-2 self-start pl-2.5 pr-3.5 h-9 rounded-pill border border-hairline bg-surface text-[12px] text-ink hover:border-stone-300"
+    >
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cobalt-tint text-cobalt text-[10px] leading-none">
+        ▶
+      </span>
+      <span>{playLabel}</span>
+    </button>
   );
 }
 

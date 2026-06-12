@@ -60,7 +60,9 @@ export interface LiveConfig {
 
 export interface TranscriptEvent {
   direction: "in" | "out";
-  kind: "original" | "translated";
+  /** "close" is emitted by the backend on turn boundaries (empty text); it
+   *  closes the last open line of `direction` without starting a new one. */
+  kind: "original" | "translated" | "close";
   text: string;
 }
 
@@ -137,6 +139,8 @@ export const ipc = {
     invoke<void>("voice_export", { id, dest }),
   historyListCalls: (search?: string) =>
     invoke<CallRecord[]>("history_list_calls", { search: search ?? null }),
+  historyGetCall: (id: number) =>
+    invoke<CallRecord | null>("history_get_call", { id }),
   historyListVoice: (search?: string) =>
     invoke<VoiceRecord[]>("history_list_voice", { search: search ?? null }),
   historySaveCall: (

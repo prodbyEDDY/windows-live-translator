@@ -12,7 +12,7 @@ import {
   type LiveConfig,
   type VoiceRecord,
 } from "../lib/ipc";
-import { appendTranscript, type TranscriptLine } from "../lib/transcript";
+import { appendTranscriptMut, type TranscriptLine } from "../lib/transcript";
 import { shouldSaveCall } from "../lib/history";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
@@ -63,6 +63,15 @@ let transcriptIdSeq = 0;
 function nextId() {
   return ++transcriptIdSeq;
 }
+
+/**
+ * The store only holds the last {@link MAX_UI_LINES} transcript lines so a long
+ * session can't grow the rendered tree unbounded. The FULL transcript lives in
+ * this module-scoped, mutable array OUTSIDE the store (no re-renders) and is
+ * what we persist to history on stop.
+ */
+const MAX_UI_LINES = 400;
+let fullTranscript: TranscriptLine[] = [];
 
 /** Awaited Tauri event unlisteners, registered in init() (HMR-safe cleanup). */
 let eventUnlisteners: UnlistenFn[] = [];
@@ -196,9 +205,15 @@ export const useAppStore = create<AppState>((set, _get) => ({
     // subsequent (HMR) re-run.
     const subscriptions = await Promise.all([
       ipc.onTranscript((ev) => {
-        set((state) => ({
-          transcript: appendTranscript(state.transcript, ev, nextId),
-        }));
+        // Maintain the full (un-capped) transcript outside the store — no
+        // re-render — then mirror only the last MAX_UI_LINES into the store.
+        appendTranscriptMut(fullTranscript, ev, nextId);
+        set({
+          transcript:
+            fullTranscript.length > MAX_UI_LINES
+              ? fullTranscript.slice(-MAX_UI_LINES)
+              : fullTranscript.slice(),
+        });
       }),
 
       ipc.onLiveState((ev) => {
@@ -314,8 +329,10 @@ export const useAppStore = create<AppState>((set, _get) => ({
     if (!settings) return;
     set({ starting: true });
     try {
+      // Fresh session: reset both the full (module-scope) transcript and the
+      // capped store copy, plus any stale duration from a prior run.
+      fullTranscript = [];
       state.clearTranscript();
-      // Fresh session: clear any stale duration carried over from a prior run.
       set({ durationSec: 0 });
       const captureMode = settings.captureMode;
       const cfg: LiveConfig = {
@@ -341,15 +358,16 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
   stopLiveSession: async () => {
     const state = _get();
-    const { settings, transcript, durationSec } = state;
+    const { settings, durationSec } = state;
     // Save transcript before stopping (only if there is meaningful content).
-    if (settings && shouldSaveCall(transcript)) {
+    // Persist the FULL transcript, not the capped store copy.
+    if (settings && shouldSaveCall(fullTranscript)) {
       try {
         await ipc.historySaveCall(
           settings.myLang,
           settings.peerLang,
           durationSec,
-          JSON.stringify(transcript)
+          JSON.stringify(fullTranscript)
         );
       } catch {
         // Non-fatal: losing the history record is preferable to blocking stop
@@ -358,7 +376,10 @@ export const useAppStore = create<AppState>((set, _get) => ({
     await state.stopLive();
   },
 
-  clearTranscript: () => set({ transcript: [] }),
+  clearTranscript: () => {
+    fullTranscript = [];
+    set({ transcript: [] });
+  },
 
   loadVoice: async () => {
     try {

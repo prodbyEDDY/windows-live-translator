@@ -33,10 +33,7 @@ export function LiveScreen() {
   const apps = useAppStore((s) => s.apps);
   const liveState = useAppStore((s) => s.liveState);
   const transcript = useAppStore((s) => s.transcript);
-  const levels = useAppStore((s) => s.levels);
-  const cost = useAppStore((s) => s.cost);
   const lastError = useAppStore((s) => s.lastError);
-  const durationSec = useAppStore((s) => s.durationSec);
   const appPid = useAppStore((s) => s.appPid);
   const setAppPid = useAppStore((s) => s.setAppPid);
   const refreshApps = useAppStore((s) => s.refreshApps);
@@ -224,32 +221,15 @@ export function LiveScreen() {
 
           <span className="w-px h-6 bg-hairline shrink-0" />
 
-          {/* Zone 2 — meters */}
-          <div className="flex flex-col gap-1.5">
-            <DirectionMeter db={levels?.micDb ?? -60} tone="out" label={t("live.levelMic")} />
-            <DirectionMeter db={levels?.appDb ?? -60} tone="in" label={t("live.levelApp")} />
-          </div>
+          {/* Zone 2 — meters (self-subscribes to levels → isolates 10Hz). */}
+          <MetersZone />
 
           <div className="flex-1" />
 
           <span className="w-px h-6 bg-hairline shrink-0" />
 
-          {/* Zone 3 — time + cost */}
-          <div className="flex items-center gap-2.5">
-            <span className="font-mono text-[12px] text-ink tabular-nums">
-              {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
-            </span>
-            {cost != null && (
-              <Tooltip>
-                <TooltipTrigger>
-                  <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
-                    ~${cost.estimatedUsd.toFixed(2)}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{t("live.costTooltip")}</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+          {/* Zone 3 — time + cost (self-subscribes to cost + durationSec). */}
+          <TimeCostZone />
         </div>
       </div>
     </div>
@@ -257,6 +237,48 @@ export function LiveScreen() {
 }
 
 // ----------- Sub-components -----------
+
+/**
+ * Status-strip meters. Subscribes to `levels` itself so the 10Hz level stream
+ * only re-renders THIS leaf, not the whole LiveScreen (and not the transcript).
+ */
+function MetersZone() {
+  const { t } = useTranslation();
+  const levels = useAppStore((s) => s.levels);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <DirectionMeter db={levels?.micDb ?? -60} tone="out" label={t("live.levelMic")} />
+      <DirectionMeter db={levels?.appDb ?? -60} tone="in" label={t("live.levelApp")} />
+    </div>
+  );
+}
+
+/**
+ * Status-strip time + estimated cost. Subscribes to `cost` and `durationSec`
+ * itself, isolating those (~1Hz) updates from the rest of LiveScreen.
+ */
+function TimeCostZone() {
+  const { t } = useTranslation();
+  const cost = useAppStore((s) => s.cost);
+  const durationSec = useAppStore((s) => s.durationSec);
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="font-mono text-[12px] text-ink tabular-nums">
+        {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
+      </span>
+      {cost != null && (
+        <Tooltip>
+          <TooltipTrigger>
+            <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
+              ~${cost.estimatedUsd.toFixed(2)}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{t("live.costTooltip")}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 
 function DirectionChip({
   session,

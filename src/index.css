@@ -4,8 +4,10 @@
 /* ---- Offline fonts (fontsource) ---- */
 @import "@fontsource-variable/unbounded";
 @import "@fontsource-variable/golos-text";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/cyrillic-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";
+@import "@fontsource/jetbrains-mono/cyrillic-500.css";
 
 @source "../node_modules/@heroui/react/dist";
 @source "../node_modules/@heroui/styles/dist";

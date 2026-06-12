@@ -57,6 +57,10 @@ export function HistoryScreen() {
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [expandedCallIds, setExpandedCallIds] = useState<Set<number>>(new Set());
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  // Cache of FULL call records fetched lazily on expand (list_calls truncates
+  // transcript_json to ~4000 chars for previews, so we re-fetch on demand).
+  const [fullCalls, setFullCalls] = useState<Map<number, CallRecord>>(new Map());
+  const [loadingCallIds, setLoadingCallIds] = useState<Set<number>>(new Set());
 
   const clearStoreVoice = useCallback(() => {
     useAppStore.setState({ voiceMessages: [] });
@@ -111,11 +115,39 @@ export function HistoryScreen() {
     }, 300);
   }
 
+  const fetchFullCall = useCallback(
+    async (id: number) => {
+      setLoadingCallIds((prev) => new Set(prev).add(id));
+      try {
+        const rec = await ipc.historyGetCall(id);
+        if (rec) {
+          setFullCalls((prev) => new Map(prev).set(id, rec));
+        }
+      } catch {
+        /* best-effort: fall back to the truncated preview record */
+      } finally {
+        setLoadingCallIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    []
+  );
+
   function toggleCall(id: number) {
     setExpandedCallIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        // Lazily fetch the full record (untruncated transcript) on first expand.
+        if (!fullCalls.has(id) && !loadingCallIds.has(id)) {
+          void fetchFullCall(id);
+        }
+      }
       return next;
     });
   }
@@ -140,6 +172,9 @@ export function HistoryScreen() {
     clearStoreVoice();
     setCalls([]);
     setVoiceRecords([]);
+    setExpandedCallIds(new Set());
+    setFullCalls(new Map());
+    setLoadingCallIds(new Set());
   }
 
   return (
@@ -247,7 +282,14 @@ export function HistoryScreen() {
                 {calls.map((call) => {
                   const expanded = expandedCallIds.has(call.id);
                   const preview = previewText(call.transcriptJson, 90);
-                  const lines = expanded ? parseTranscriptLines(call.transcriptJson) : [];
+                  const fullCall = fullCalls.get(call.id);
+                  const isLoadingFull = loadingCallIds.has(call.id);
+                  // Prefer the full (untruncated) record once fetched; the
+                  // preview record's transcript_json is capped at ~4000 chars.
+                  const lines =
+                    expanded && fullCall
+                      ? parseTranscriptLines(fullCall.transcriptJson)
+                      : [];
 
                   return (
                     <div
@@ -280,7 +322,12 @@ export function HistoryScreen() {
                           className="border-t border-hairline bg-paper"
                           style={{ minHeight: 120, maxHeight: 380, display: "flex", flexDirection: "column" }}
                         >
-                          {lines.length > 0 ? (
+                          {isLoadingFull && !fullCall ? (
+                            <div className="flex items-center justify-center gap-2 p-4 text-muted text-xs">
+                              <Spinner size="sm" />
+                              <span>{t("history.loading")}</span>
+                            </div>
+                          ) : lines.length > 0 ? (
                             <TranscriptFeed lines={lines} />
                           ) : (
                             <div className="flex items-center justify-center p-4 text-muted text-xs">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app";
 import { langLabel } from "../lib/languages";
@@ -8,7 +8,7 @@ interface TranscriptFeedProps {
   lines: TranscriptLine[];
 }
 
-export function TranscriptFeed({ lines }: TranscriptFeedProps) {
+function TranscriptFeedImpl({ lines }: TranscriptFeedProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
@@ -68,6 +68,12 @@ export function TranscriptFeed({ lines }: TranscriptFeedProps) {
     </div>
   );
 }
+
+/**
+ * Memoized so the 10Hz status-strip re-renders (levels/cost) in LiveScreen
+ * can't force a transcript re-render — it only re-renders when `lines` changes.
+ */
+export const TranscriptFeed = memo(TranscriptFeedImpl);
 
 /** Empty-state with oversized glyph + one-line hint + a 3-step stepper. */
 function TranscriptEmpty() {
