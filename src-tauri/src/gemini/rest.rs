@@ -27,6 +27,103 @@ fn slow_client() -> &'static reqwest::Client {
     })
 }
 
+// ── TTS ─────────────────────────────────────────────────────────────────────
+
+/// All pre-built voice names available for `gemini-3.1-flash-tts-preview`.
+pub const TTS_VOICES: &[&str] = &[
+    "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
+    "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+    "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+    "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
+];
+
+/// Extract PCM16 samples from a `generateContent` response value.
+///
+/// Looks in `candidates[0].content.parts[*].inlineData` for parts whose
+/// `mimeType` starts with `"audio/"`, base64-decodes the data, interprets
+/// the bytes as little-endian i16 samples, and concatenates all audio parts.
+/// Text parts and parts with non-audio MIME types are silently skipped.
+/// Returns `None` when no audio parts are found or the input shape is wrong.
+pub fn extract_tts_pcm(v: &serde_json::Value) -> Option<Vec<i16>> {
+    let parts = v
+        .pointer("/candidates/0/content/parts")
+        .and_then(|p| p.as_array())?;
+
+    let mut out: Vec<i16> = Vec::new();
+    let mut found_audio = false;
+
+    for part in parts {
+        let inline = match part.get("inlineData").or_else(|| part.get("inline_data")) {
+            Some(d) => d,
+            None => continue, // text part or unknown — skip
+        };
+        let mime = inline.get("mimeType")
+            .or_else(|| inline.get("mime_type"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("");
+        if !mime.starts_with("audio/") {
+            continue;
+        }
+        let b64 = inline.get("data").and_then(|d| d.as_str()).unwrap_or("");
+        let mut bytes = match base64::engine::general_purpose::STANDARD.decode(b64) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if bytes.len() % 2 != 0 {
+            bytes.pop(); // drop trailing orphan byte
+        }
+        out.extend(
+            bytes.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])),
+        );
+        found_audio = true;
+    }
+
+    if found_audio { Some(out) } else { None }
+}
+
+/// Synthesize `text` to PCM16 mono 24 kHz audio using `gemini-3.1-flash-tts-preview`.
+///
+/// `voice` must be one of the names in [`TTS_VOICES`].
+/// Returns raw signed-16-bit little-endian samples at 24 kHz.
+pub async fn synthesize_speech(
+    api_key: &str,
+    text: &str,
+    voice: &str,
+) -> anyhow::Result<Vec<i16>> {
+    let url = format!("{BASE}/models/gemini-3.1-flash-tts-preview:generateContent");
+    let body = serde_json::json!({
+        "contents": [{ "parts": [{ "text": text }] }],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": { "voiceName": voice }
+                }
+            }
+        }
+    });
+
+    let resp = slow_client()
+        .post(&url)
+        .header("x-goog-api-key", api_key)
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("TTS generateContent failed: HTTP {status}: {body_text}");
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    extract_tts_pcm(&json)
+        .ok_or_else(|| anyhow::anyhow!("TTS response contained no audio parts: {json}"))
+}
+
+// ── Voice transcription ──────────────────────────────────────────────────────
+
 /// Returned by `transcribe_translate`. Field names match the JSON the model produces.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -281,6 +378,75 @@ pub async fn validate_key(key: &str) -> KeyStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── TTS voices ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn tts_voices_contains_kore_and_has_enough_entries() {
+        assert!(TTS_VOICES.contains(&"Kore"), "TTS_VOICES must contain 'Kore'");
+        assert!(
+            TTS_VOICES.len() >= 20,
+            "expected at least 20 voices, got {}",
+            TTS_VOICES.len()
+        );
+    }
+
+    // ── extract_tts_pcm ──────────────────────────────────────────────────────
+
+    fn make_b64_pcm(samples: &[i16]) -> String {
+        let bytes: Vec<u8> = samples
+            .iter()
+            .flat_map(|s| s.to_le_bytes())
+            .collect();
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
+    #[test]
+    fn extract_tts_pcm_fixture_two_audio_parts_plus_text_part() {
+        // Part 0: audio with samples [1, 2]
+        let b64_a = make_b64_pcm(&[1i16, 2]);
+        // Part 1: text part — must be skipped
+        // Part 2: audio with samples [3, -1]
+        let b64_b = make_b64_pcm(&[3i16, -1]);
+
+        let v = serde_json::json!({
+            "candidates": [{
+                "content": {
+                    "parts": [
+                        { "inlineData": { "mimeType": "audio/pcm", "data": b64_a } },
+                        { "text": "some transcription text" },
+                        { "inlineData": { "mimeType": "audio/L16;rate=24000", "data": b64_b } }
+                    ]
+                }
+            }]
+        });
+
+        let pcm = extract_tts_pcm(&v).expect("should extract PCM from fixture");
+        assert_eq!(pcm, vec![1i16, 2, 3, -1], "must concatenate both audio parts in order");
+    }
+
+    #[test]
+    fn extract_tts_pcm_returns_none_on_garbage() {
+        assert!(extract_tts_pcm(&serde_json::json!({})).is_none());
+        assert!(extract_tts_pcm(&serde_json::json!(null)).is_none());
+        assert!(extract_tts_pcm(&serde_json::json!({"candidates": []})).is_none());
+        // parts present but all text — no audio
+        let v = serde_json::json!({
+            "candidates": [{ "content": { "parts": [{ "text": "hello" }] } }]
+        });
+        assert!(extract_tts_pcm(&v).is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "needs real key in GEMINI_API_KEY env"]
+    async fn real_tts_smoke() {
+        let key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
+        let pcm = synthesize_speech(&key, "Hello, world!", "Kore")
+            .await
+            .expect("TTS should succeed");
+        assert!(!pcm.is_empty(), "should return at least one PCM sample");
+        println!("TTS smoke: {} samples", pcm.len());
+    }
 
     // ── parse_voice_json ─────────────────────────────────────────────────────
 
