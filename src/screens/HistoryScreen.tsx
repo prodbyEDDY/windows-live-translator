@@ -226,9 +226,17 @@ export function HistoryScreen() {
         className="flex flex-col flex-1 overflow-hidden"
       >
         <TabList className="px-4 pt-2 border-b border-gray-200 bg-white flex gap-1">
-          <Tab id="calls">{t("history.tabCalls")}</Tab>
-          <Tab id="voice">{t("history.tabVoice")}</Tab>
-          <TabIndicator />
+          {/* TabIndicator is a react-aria SelectionIndicator: it must live INSIDE
+              a Tab (the SharedElementTransition wraps collection items only) —
+              as a TabList sibling it throws and white-screens the app. */}
+          <Tab id="calls">
+            {t("history.tabCalls")}
+            <TabIndicator />
+          </Tab>
+          <Tab id="voice">
+            {t("history.tabVoice")}
+            <TabIndicator />
+          </Tab>
         </TabList>
 
         {/* ---- Calls tab ---- */}
