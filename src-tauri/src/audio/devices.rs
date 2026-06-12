@@ -33,6 +33,9 @@ pub struct DevicesPayload {
 pub struct AppSession {
     pub pid: u32,
     pub name: String,
+    /// Whether the session is audibly rendering right now (Active) or merely
+    /// exists (Inactive — e.g. an idle Zoom before the call connects).
+    pub active: bool,
 }
 
 /// Friendly-name fragment of the VB-Audio Virtual Cable *render* endpoint we
@@ -121,8 +124,9 @@ pub fn cable_render_device_id() -> Option<String> {
 pub fn list_audio_apps() -> anyhow::Result<Vec<AppSession>> {
     use windows::core::Interface;
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2,
-        IMMDeviceEnumerator, MMDeviceEnumerator,
+        eRender, AudioSessionStateActive, AudioSessionStateInactive,
+        IAudioSessionControl2, IAudioSessionManager2,
+        IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
     };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
@@ -142,56 +146,82 @@ pub fn list_audio_apps() -> anyhow::Result<Vec<AppSession>> {
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
                 .map_err(|e| anyhow::anyhow!("CoCreateInstance(MMDeviceEnumerator) failed: {e}"))?;
 
-        let device = enumerator
-            .GetDefaultAudioEndpoint(eRender, eConsole)
-            .map_err(|e| anyhow::anyhow!("GetDefaultAudioEndpoint failed: {e}"))?;
-
-        let manager: IAudioSessionManager2 = device
-            .Activate(CLSCTX_ALL, None)
-            .map_err(|e| anyhow::anyhow!("Activate(IAudioSessionManager2) failed: {e}"))?;
-
-        let sessions = manager
-            .GetSessionEnumerator()
-            .map_err(|e| anyhow::anyhow!("GetSessionEnumerator failed: {e}"))?;
-
-        let count = sessions.GetCount().unwrap_or(0);
+        // Walk EVERY active render endpoint, not just the default one: on
+        // multi-device systems apps hold their sessions on whatever output they
+        // use (headset, monitor, virtual cable), and process-loopback capture is
+        // by PID — the device a session lives on is irrelevant to us.
+        let collection = enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .map_err(|e| anyhow::anyhow!("EnumAudioEndpoints failed: {e}"))?;
+        let device_count = collection.GetCount().unwrap_or(0);
 
         let mut seen: HashSet<u32> = HashSet::new();
         let mut apps = Vec::new();
 
-        for i in 0..count {
-            // Per-session failures must not abort the whole scan — sessions can
-            // disappear between GetCount and GetSession, etc. Skip and continue.
-            let control = match sessions.GetSession(i) {
-                Ok(c) => c,
+        for d in 0..device_count {
+            // Per-device failures must not abort the scan (a device can vanish
+            // mid-walk); skip and continue with the next endpoint.
+            let device = match collection.Item(d) {
+                Ok(dev) => dev,
                 Err(_) => continue,
             };
-            let control2: IAudioSessionControl2 = match control.cast() {
-                Ok(c) => c,
+            let manager: IAudioSessionManager2 = match device.Activate(CLSCTX_ALL, None) {
+                Ok(m) => m,
                 Err(_) => continue,
             };
+            let sessions = match manager.GetSessionEnumerator() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let count = sessions.GetCount().unwrap_or(0);
 
-            let pid = match control2.GetProcessId() {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            if pid == 0 || pid == own_pid || seen.contains(&pid) {
-                continue;
+            for i in 0..count {
+                // Per-session failures must not abort the whole scan — sessions
+                // can disappear between GetCount and GetSession. Skip, continue.
+                let control = match sessions.GetSession(i) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let control2: IAudioSessionControl2 = match control.cast() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                let pid = match control2.GetProcessId() {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                if pid == 0 || pid == own_pid || seen.contains(&pid) {
+                    continue;
+                }
+
+                // Include Active AND Inactive sessions: an idle Zoom/browser
+                // has an Inactive session (it exists but isn't rendering right
+                // now) and the user must be able to pick it BEFORE the call
+                // starts making sound. Only Expired sessions are skipped.
+                let active = match control2.GetState() {
+                    Ok(state) if state == AudioSessionStateActive => true,
+                    Ok(state) if state == AudioSessionStateInactive => false,
+                    _ => continue,
+                };
+
+                // Elevated processes deny OpenProcess — still list them by pid
+                // so the app picker doesn't silently hide an audible app.
+                let name =
+                    process_name_for_pid(pid).unwrap_or_else(|| format!("pid {pid}"));
+
+                seen.insert(pid);
+                apps.push(AppSession { pid, name, active });
             }
-
-            match control2.GetState() {
-                Ok(state) if state == AudioSessionStateActive => {}
-                _ => continue,
-            }
-
-            // Elevated processes deny OpenProcess — still list them by pid so
-            // the app picker doesn't silently hide an audible app.
-            let name = process_name_for_pid(pid).unwrap_or_else(|| format!("pid {pid}"));
-
-            seen.insert(pid);
-            apps.push(AppSession { pid, name });
         }
 
+        // Audibly-active apps first, then alphabetically — the app the user is
+        // looking for during a call is almost always the one making sound.
+        apps.sort_by(|a, b| {
+            b.active
+                .cmp(&a.active)
+                .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
         Ok(apps)
     }
 }

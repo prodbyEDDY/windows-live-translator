@@ -196,7 +196,11 @@ export function LiveScreen() {
           <div className="flex flex-col gap-0.5 flex-1 min-w-0">
             <label className="text-xs text-gray-500">{t("live.audioSource")}</label>
             <SelectRoot
-              selectedKey={captureMode === "system" ? APP_SYSTEM_KEY : (appPid != null ? String(appPid) : APP_SYSTEM_KEY)}
+              // app-mode without a chosen pid must NOT display "system" — that
+              // desyncs the visible value from canStart's verdict. null shows
+              // the placeholder so the control and the hint agree.
+              selectedKey={captureMode === "system" ? APP_SYSTEM_KEY : (appPid != null ? String(appPid) : null)}
+              placeholder={t("live.pickAppPlaceholder")}
               onSelectionChange={(key) => {
                 if (key === APP_SYSTEM_KEY) {
                   void useAppStore.getState().patchSettings({ captureMode: "system" });
@@ -231,7 +235,7 @@ export function LiveScreen() {
                       id={String(app.pid)}
                       textValue={`${app.name} (${app.pid})`}
                     >
-                      {app.name} ({app.pid})
+                      {app.active ? "🔊 " : ""}{app.name} ({app.pid})
                     </ListBoxItem>
                   ))}
                 </ListBox>

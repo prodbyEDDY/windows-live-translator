@@ -21,6 +21,8 @@ export interface DevicesPayload {
 export interface AppSession {
   pid: number;
   name: string;
+  /** Session is audibly rendering right now (vs merely existing, e.g. idle Zoom). */
+  active: boolean;
 }
 
 export interface Settings {

@@ -194,6 +194,7 @@
       "alreadyRunning": "Translation is already running",
       "cableMissing": "VB-CABLE not found — run Setup Wizard",
       "noAppSelected": "Select an app to capture first"
-    }
+    },
+    "pickAppPlaceholder": "Pick an application…"
   }
 }
