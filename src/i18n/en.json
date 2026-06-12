@@ -146,6 +146,20 @@
       "importFailed": "Failed to import file"
     }
   },
+  "history": {
+    "tabCalls": "Calls",
+    "tabVoice": "Voice",
+    "searchPlaceholder": "Search…",
+    "clearHistory": "Clear history",
+    "confirmClearTitle": "Clear all history?",
+    "confirmClearBody": "This will permanently delete all call transcripts and voice messages (including audio files).",
+    "confirmClearOk": "Clear",
+    "emptyCalls": "No calls yet",
+    "emptyVoice": "No voice messages yet",
+    "loading": "Loading…",
+    "durationLabel": "Duration",
+    "langPairSeparator": "→"
+  },
   "live": {
     "myLang": "My language",
     "peerLang": "Peer language",

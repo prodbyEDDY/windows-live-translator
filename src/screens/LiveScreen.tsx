@@ -23,6 +23,8 @@ import { LevelMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { canStart } from "../lib/liveStart";
 import { looksLikeHeadphones } from "../lib/echo";
+import { ipc } from "../lib/ipc";
+import { shouldSaveCall } from "../lib/history";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -126,6 +128,20 @@ export function LiveScreen() {
   }
 
   async function handleStop() {
+    // Save transcript before stopping (only if there is meaningful content).
+    // A crashed/interrupted call loses its transcript — acceptable v1 behaviour.
+    if (settings && shouldSaveCall(transcript)) {
+      try {
+        await ipc.historySaveCall(
+          settings.myLang,
+          settings.peerLang,
+          durationSec,
+          JSON.stringify(transcript)
+        );
+      } catch {
+        // Non-fatal: losing the history record is preferable to blocking stop
+      }
+    }
     await stopLive();
   }
 

@@ -146,6 +146,20 @@
       "importFailed": "Не удалось импортировать файл"
     }
   },
+  "history": {
+    "tabCalls": "Звонки",
+    "tabVoice": "Голосовые",
+    "searchPlaceholder": "Поиск…",
+    "clearHistory": "Очистить историю",
+    "confirmClearTitle": "Очистить всю историю?",
+    "confirmClearBody": "Все транскрипты звонков и голосовые сообщения (включая аудиофайлы) будут удалены.",
+    "confirmClearOk": "Очистить",
+    "emptyCalls": "Звонков пока нет",
+    "emptyVoice": "Голосовых сообщений пока нет",
+    "loading": "Загрузка…",
+    "durationLabel": "Длительность",
+    "langPairSeparator": "→"
+  },
   "live": {
     "myLang": "Мой язык",
     "peerLang": "Язык собеседника",
