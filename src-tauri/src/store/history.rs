@@ -191,6 +191,21 @@ impl HistoryStore {
         Ok(conn.last_insert_rowid())
     }
 
+    /// Overwrite the `source_path` of an existing voice row.
+    ///
+    /// `source_path` is set once at insert and is deliberately *not* part of
+    /// [`VoiceUpdate`]; the pipeline uses this to swap the placeholder path
+    /// (inserted before the row id was known) for the canonical `{id}-source.*`
+    /// file name once the id exists.
+    pub fn set_source_path(&self, id: i64, source_path: &str) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE voice_messages SET source_path = ?1 WHERE id = ?2",
+            params![source_path, id],
+        )?;
+        Ok(())
+    }
+
     /// Apply a partial update to a voice record.
     ///
     /// Only fields that are `Some` in `patch` are written.  If `patch` is
