@@ -1,0 +1,46 @@
+[package]
+name = "live-translator"
+version = "0.1.0"
+description = "Live Translator - Windows real-time call translator"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "live_translator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-tungstenite = { version = "0.29.0", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3.32"
+base64 = "0.22.1"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
+tracing = "0.1.44"
+crossbeam-channel = "0.5.15"
+tempfile = "3.27.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate", "deflate64", "bzip2", "zstd", "aes-crypto", "lzma", "ppmd"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+keyring = { version = "3.6.1", features = ["windows-native"] }
+rubato = "3.0.0"
+wasapi = "0.23.0"
+windows = { version = "0.62.2", features = ["Win32_Media_Audio", "Win32_System_Com", "Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell"] }
+tokio-util = "0.7.18"
+time = { version = "=0.3.47", features = ["macros", "formatting", "parsing", "local-offset", "serde-human-readable"] }
+
+[dev-dependencies]
+hound = "3.5.1"
+
