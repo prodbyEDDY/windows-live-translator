@@ -191,9 +191,9 @@ export function VoiceScreen() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 lt-screen-in">
         {/* ---- Header row ---- */}
-        <div className="flex items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center justify-between gap-4 shrink-0 min-h-9">
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
             {t("voice.title")}
           </h1>
@@ -221,10 +221,10 @@ export function VoiceScreen() {
                 aria-label={
                   isRecording ? t("voice.stopButton") : t("voice.recordButton")
                 }
-                className={`relative flex items-center justify-center w-14 h-14 rounded-full text-white shadow-studio transition-colors ${
+                className={`lt-press relative flex items-center justify-center w-14 h-14 rounded-full text-white lt-card ${
                   isRecording
                     ? "bg-tangerine hover:bg-tangerine-deep"
-                    : "bg-cobalt hover:bg-cobalt-deep"
+                    : "bg-cobalt hover:bg-cobalt-deep lt-glow"
                 }`}
               >
                 {isRecording ? <IconStopSquare size={22} /> : <IconMic size={22} />}
@@ -245,7 +245,7 @@ export function VoiceScreen() {
         )}
 
         {/* Drop hint */}
-        <div className="flex items-center justify-center gap-2 rounded-card border border-dashed border-hairline py-2.5 text-[12px] text-muted shrink-0">
+        <div className="flex items-center justify-center gap-2 rounded-card border border-dashed border-stone-300 py-2.5 text-[12px] text-muted shrink-0">
           <IconDownload size={14} />
           {t("voice.dropHint")}
         </div>
@@ -253,8 +253,8 @@ export function VoiceScreen() {
         {/* ---- Card list ---- */}
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 -mx-1 px-1">
           {voiceMessages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
-              <span className="font-display text-[56px] leading-none text-stone-200">
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+              <span className="font-display text-[72px] leading-none text-stone-200">
                 ◎
               </span>
               <p className="text-[13px] text-muted whitespace-pre-line max-w-sm leading-relaxed">

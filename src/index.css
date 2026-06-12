@@ -38,6 +38,7 @@
 
   /* Radii */
   --radius-card: 12px;
+  --radius-bubble: 14px;
   --radius-pill: 999px;
 
   /* Fonts */
@@ -45,8 +46,11 @@
   --font-body: "Golos Text Variable", "Golos Text", ui-sans-serif, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Shadow */
-  --shadow-studio: 0 1px 2px rgb(28 25 23 / 0.05), 0 8px 24px rgb(28 25 23 / 0.06);
+  /* Shadow system — one resting, one hover-lift. */
+  --shadow-studio: 0 1px 2px rgb(28 25 23 / 0.04), 0 4px 16px rgb(28 25 23 / 0.04);
+  --shadow-studio-hover: 0 2px 4px rgb(28 25 23 / 0.05), 0 12px 32px rgb(28 25 23 / 0.07);
+  /* Subtle cobalt glow for the idle Start button. */
+  --shadow-glow: 0 1px 2px rgb(28 25 23 / 0.05), 0 6px 18px rgb(30 91 215 / 0.28);
 }
 
 /* ---- Base ---- */
@@ -96,10 +100,121 @@ body {
   background: #a8a29e;
 }
 
-/* ---- Focus rings ---- */
+/* ---- Focus rings (cobalt, everywhere) ---- */
 :focus-visible {
   outline: 2px solid var(--color-cobalt);
   outline-offset: 2px;
+  border-radius: 6px;
+}
+/* HeroUI primitives expose focus via data-attributes — mirror the ring there. */
+[data-focus-visible] {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   Shared finish utilities — one shadow system, press feedback, transitions
+   ========================================================================= */
+
+/* Resting → hover lift, single source of truth. */
+.lt-card {
+  box-shadow: var(--shadow-studio);
+  transition:
+    box-shadow 150ms ease-out,
+    transform 150ms ease-out,
+    border-color 150ms ease-out;
+}
+.lt-card-hover:hover {
+  box-shadow: var(--shadow-studio-hover);
+  transform: translateY(-1px);
+}
+
+/* Button press feedback: scale 0.98 on active. */
+.lt-press {
+  transition:
+    transform 120ms ease-out,
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out,
+    color 150ms ease-out;
+}
+.lt-press:active {
+  transform: scale(0.98);
+}
+
+/* Idle Start glow. */
+.lt-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+/* Screen content enter: 120ms fade + 4px rise. */
+@keyframes lt-screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.lt-screen-in {
+  animation: lt-screen-in 120ms ease-out both;
+}
+
+/* Wizard step ring-pulse on entry (once). */
+@keyframes lt-step-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(30 91 215 / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgb(30 91 215 / 0);
+  }
+}
+.lt-step-pulse {
+  animation: lt-step-pulse 900ms ease-out 1;
+}
+
+/* Live "typing" 3-dot pulse, staggered. */
+.lt-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.lt-typing > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: lt-typing-dot 1100ms ease-in-out infinite;
+}
+.lt-typing > span:nth-child(2) {
+  animation-delay: 160ms;
+}
+.lt-typing > span:nth-child(3) {
+  animation-delay: 320ms;
+}
+@keyframes lt-typing-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* Swap button: 90° on hover, 180° on press. */
+.lt-swap {
+  transition: transform 180ms cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.lt-swap:hover {
+  transform: rotate(90deg);
+}
+.lt-swap:active {
+  transform: rotate(180deg);
 }
 
 /* =========================================================================
@@ -166,8 +281,17 @@ body {
   .lt-bubble-in,
   .lt-wave-bar,
   .lt-pulse-dot,
-  .lt-ring {
+  .lt-ring,
+  .lt-screen-in,
+  .lt-step-pulse,
+  .lt-typing > span {
     animation: none !important;
+  }
+  .lt-card-hover:hover,
+  .lt-press:active,
+  .lt-swap:hover,
+  .lt-swap:active {
+    transform: none !important;
   }
   * {
     transition-duration: 0.01ms !important;

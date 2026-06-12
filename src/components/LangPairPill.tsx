@@ -6,12 +6,12 @@ import { langLabel } from "../lib/languages";
  */
 export function LangPairPill({ from, to }: { from: string; to: string }) {
   return (
-    <span className="inline-flex items-center shrink-0 rounded-pill border border-hairline overflow-hidden text-[11px] font-medium leading-none">
-      <span className="px-2 py-1 bg-cobalt-tint text-cobalt-deep font-mono">
+    <span className="inline-flex items-center shrink-0 h-6 rounded-pill border border-hairline overflow-hidden text-[10px] font-semibold leading-none tracking-[0.04em]">
+      <span className="px-2 h-full inline-flex items-center bg-cobalt-tint text-cobalt-deep font-mono">
         {langLabel(from)}
       </span>
-      <span className="px-1 py-1 bg-stone-50 text-muted">→</span>
-      <span className="px-2 py-1 bg-tangerine-tint text-tangerine-deep font-mono">
+      <span className="px-1 h-full inline-flex items-center bg-stone-50 text-stone-400">→</span>
+      <span className="px-2 h-full inline-flex items-center bg-tangerine-tint text-tangerine-deep font-mono">
         {langLabel(to)}
       </span>
     </span>

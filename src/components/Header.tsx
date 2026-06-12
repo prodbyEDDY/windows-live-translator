@@ -7,17 +7,16 @@ import {
   SelectRoot,
   SelectPopover,
   SelectTrigger,
-  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@heroui/react";
 import { useAppStore } from "../stores/app";
-import { LANGUAGES } from "../lib/languages";
+import { LANGUAGES, langLabel, langAutonym } from "../lib/languages";
 import { canStart } from "../lib/liveStart";
 import { WaveformGlyph, IconSwap, IconStopSquare } from "./Icons";
 
-/** Compact language Select pill used in the header (no label). */
+/** Compact language Select pill: mono code prefix (RU / EN) + native autonym. */
 function LangPill({
   value,
   onChange,
@@ -31,8 +30,9 @@ function LangPill({
 }) {
   const ring =
     tone === "out"
-      ? "border-cobalt/30 text-cobalt-deep hover:border-cobalt/60"
-      : "border-tangerine/30 text-tangerine-deep hover:border-tangerine/60";
+      ? "border-cobalt/25 hover:border-cobalt/55 focus-within:border-cobalt/55"
+      : "border-tangerine/25 hover:border-tangerine/55 focus-within:border-tangerine/55";
+  const codeColor = tone === "out" ? "text-cobalt" : "text-tangerine";
   return (
     <SelectRoot
       selectedKey={value}
@@ -40,14 +40,22 @@ function LangPill({
       aria-label={ariaLabel}
     >
       <SelectTrigger
-        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-pill border bg-surface text-[13px] font-medium transition-colors ${ring}`}
+        className={`lt-press group inline-flex items-center gap-2 h-9 pl-2.5 pr-3 rounded-pill border bg-surface text-[13px] font-medium text-ink ${ring}`}
       >
-        <SelectValue />
+        <span
+          className={`font-mono text-[10px] font-semibold tracking-[0.08em] leading-none ${codeColor}`}
+        >
+          {langLabel(value)}
+        </span>
+        <span className="leading-none">{langAutonym(value)}</span>
       </SelectTrigger>
       <SelectPopover>
         <ListBox items={LANGUAGES} className="max-h-72 overflow-y-auto">
           {(lang) => (
             <ListBoxItem key={lang.code} id={lang.code} textValue={lang.autonym}>
+              <span className="font-mono text-[10px] text-muted mr-2">
+                {langLabel(lang.code)}
+              </span>
               {lang.autonym}
             </ListBoxItem>
           )}
@@ -94,9 +102,9 @@ export function Header() {
   }
 
   return (
-    <header className="relative z-20 flex items-center h-14 px-4 gap-4 bg-surface border-b border-hairline shadow-[0_1px_2px_rgb(28_25_23_/_0.05)] shrink-0">
-      {/* Wordmark */}
-      <div className="flex items-center gap-2.5 shrink-0 w-52">
+    <header className="relative z-20 flex items-center h-14 pr-5 gap-4 bg-surface border-b border-hairline shadow-[0_1px_2px_rgb(28_25_23_/_0.04)] shrink-0">
+      {/* Wordmark — fixed-width block aligned to the sidebar edge (224px). */}
+      <div className="flex items-center gap-2.5 shrink-0 w-56 px-5 border-r border-hairline self-stretch">
         <WaveformGlyph active={phase === "running"} />
         <span className="font-display text-[13px] font-semibold tracking-[0.14em] text-ink leading-none">
           LIVE&nbsp;TRANSLATOR
@@ -105,7 +113,7 @@ export function Header() {
 
       {/* Center: compact language pair */}
       {settings && (
-        <div className="flex-1 flex items-center justify-center gap-2">
+        <div className="flex-1 flex items-center justify-center gap-2.5">
           <LangPill
             value={settings.myLang}
             onChange={(c) => void patchSettings({ myLang: c })}
@@ -115,9 +123,9 @@ export function Header() {
           <button
             onClick={handleSwap}
             aria-label={t("live.swapLangs")}
-            className="lt-swap inline-flex items-center justify-center w-8 h-8 rounded-pill border border-hairline bg-surface text-muted hover:text-ink hover:border-stone-300 transition-all active:rotate-180 active:duration-200"
+            className="lt-swap inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40"
           >
-            <IconSwap size={16} />
+            <IconSwap size={15} />
           </button>
           <LangPill
             value={settings.peerLang}
@@ -129,14 +137,14 @@ export function Header() {
       )}
 
       {/* Right: status + start/stop (start/stop only on live screen) */}
-      <div className="flex items-center gap-3 shrink-0 w-52 justify-end">
+      <div className="flex items-center gap-3 shrink-0 w-56 justify-end">
         <SessionStatusChip phase={phase} t={t} />
         {screen === "live" &&
           (isRunning ? (
             <Button
               variant="outline"
               onPress={() => void stopLiveSession()}
-              className="h-9 px-4 rounded-pill border-danger/50 text-danger hover:bg-danger/5 font-display text-[12px] tracking-wide inline-flex items-center gap-1.5"
+              className="lt-press h-9 px-4 rounded-pill border-danger/50 text-danger hover:bg-danger/5 font-display text-[12px] tracking-[0.04em] inline-flex items-center gap-1.5"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-danger lt-pulse-dot" />
               <IconStopSquare size={14} />
@@ -147,7 +155,7 @@ export function Header() {
               variant="primary"
               isDisabled={starting}
               onPress={() => void startLiveSession()}
-              className="h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-wide disabled:opacity-60"
+              className="lt-press lt-glow h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-[0.04em] disabled:opacity-60"
             >
               {t("common.start")}
             </Button>
@@ -157,7 +165,7 @@ export function Header() {
                 <Button
                   variant="outline"
                   isDisabled
-                  className="h-9 px-5 rounded-pill border-hairline text-stone-400 font-display text-[12px] tracking-wide"
+                  className="h-9 px-5 rounded-pill border-hairline text-stone-400 font-display text-[12px] tracking-[0.04em]"
                 >
                   {t("common.start")}
                 </Button>
@@ -206,7 +214,7 @@ function SessionStatusChip({
   }
   return (
     <span
-      className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-pill text-[11px] font-medium ${bg} ${text}`}
+      className={`inline-flex items-center gap-2 h-9 px-3 rounded-pill text-[11.5px] font-medium ${bg} ${text}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${dot} ${pulse ? "lt-pulse-dot" : ""}`} />
       {label}

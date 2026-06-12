@@ -84,12 +84,12 @@ export function LiveScreen() {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
       {/* Centered content column */}
-      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-5 pb-0 flex flex-col gap-3">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-6 pb-0 flex flex-col gap-4">
         {/* ---- Toolbar: source picker ---- */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted shrink-0">
+        <div className="flex items-center gap-3 shrink-0 h-9">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted shrink-0">
             {t("live.audioSource")}
           </span>
           <SelectRoot
@@ -116,7 +116,7 @@ export function LiveScreen() {
               if (open) void refreshApps();
             }}
           >
-            <SelectTrigger className="min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-3 pr-3.5 rounded-pill border border-hairline bg-surface text-[13px] text-ink hover:border-stone-300 transition-colors">
+            <SelectTrigger className="lt-press min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-2.5 pr-3.5 rounded-pill border border-hairline bg-surface text-[13px] text-ink hover:border-stone-300">
               <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md bg-cobalt-tint text-cobalt text-[11px]">
                 ♪
               </span>
@@ -190,13 +190,13 @@ export function LiveScreen() {
         )}
 
         {/* ---- Transcript card (fills) ---- */}
-        <div className="relative flex-1 min-h-0 bg-surface border border-hairline rounded-card shadow-studio overflow-hidden flex flex-col">
+        <div className="relative flex-1 min-h-0 bg-surface border border-hairline rounded-card lt-card overflow-hidden flex flex-col">
           <TranscriptFeed lines={transcript} />
           {transcript.length > 0 && (
             <div className="absolute top-2.5 right-2.5 z-10">
               <button
                 onClick={clearTranscript}
-                className="px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100 transition-colors"
+                className="lt-press px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100"
               >
                 {t("live.clearTranscript")}
               </button>
@@ -205,10 +205,10 @@ export function LiveScreen() {
         </div>
       </div>
 
-      {/* ---- Status strip ---- */}
+      {/* ---- Status strip: three zones (sessions | meters | time+cost) ---- */}
       <div className="shrink-0 border-t border-hairline bg-surface">
-        <div className="w-full max-w-[920px] mx-auto px-6 py-2.5 flex items-center gap-4 flex-wrap">
-          {/* Direction chips */}
+        <div className="w-full max-w-[920px] mx-auto px-6 h-12 flex items-center gap-4">
+          {/* Zone 1 — sessions */}
           <div className="flex items-center gap-2">
             <DirectionChip
               session={liveState?.outSession ?? "off"}
@@ -222,28 +222,34 @@ export function LiveScreen() {
             />
           </div>
 
-          {/* Meters */}
-          <div className="flex flex-col gap-1 ml-2">
+          <span className="w-px h-6 bg-hairline shrink-0" />
+
+          {/* Zone 2 — meters */}
+          <div className="flex flex-col gap-1.5">
             <DirectionMeter db={levels?.micDb ?? -60} tone="out" label={t("live.levelMic")} />
             <DirectionMeter db={levels?.appDb ?? -60} tone="in" label={t("live.levelApp")} />
           </div>
 
           <div className="flex-1" />
 
-          {/* Timer + cost */}
-          <span className="font-mono text-[12px] text-ink tabular-nums">
-            {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
-          </span>
-          {cost != null && (
-            <Tooltip>
-              <TooltipTrigger>
-                <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
-                  ~${cost.estimatedUsd.toFixed(2)}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{t("live.costTooltip")}</TooltipContent>
-            </Tooltip>
-          )}
+          <span className="w-px h-6 bg-hairline shrink-0" />
+
+          {/* Zone 3 — time + cost */}
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono text-[12px] text-ink tabular-nums">
+              {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
+            </span>
+            {cost != null && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
+                    ~${cost.estimatedUsd.toFixed(2)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{t("live.costTooltip")}</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -284,7 +290,7 @@ function DirectionChip({
 
   const chip = (
     <span
-      className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${cls}`}
+      className={`inline-flex items-center h-7 px-3 rounded-pill text-[11px] font-medium ${cls}`}
     >
       {label}
     </span>

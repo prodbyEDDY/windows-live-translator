@@ -36,7 +36,7 @@ export function Banner({ tone, title, description, action, onDismiss }: BannerPr
       {action && (
         <button
           onClick={action.onClick}
-          className="shrink-0 px-3 h-7 rounded-pill text-[12px] font-medium text-ink border border-hairline bg-surface hover:border-stone-300 transition-colors"
+          className="lt-press shrink-0 px-3 h-7 rounded-pill text-[12px] font-medium text-ink border border-hairline bg-surface hover:border-stone-300"
         >
           {action.label}
         </button>

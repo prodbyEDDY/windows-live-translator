@@ -60,7 +60,7 @@ export function ApiKeyField({ onValid }: ApiKeyFieldProps) {
         <button
           onClick={() => void handleSaveCheck()}
           disabled={loading || value.trim().length === 0}
-          className="shrink-0 h-10 px-4 rounded-pill bg-cobalt hover:bg-cobalt-deep disabled:opacity-40 disabled:hover:bg-cobalt text-white text-[13px] font-medium transition-colors inline-flex items-center justify-center min-w-24"
+          className="lt-press shrink-0 h-10 px-4 rounded-pill bg-cobalt hover:bg-cobalt-deep disabled:opacity-40 disabled:hover:bg-cobalt text-white text-[13px] font-medium inline-flex items-center justify-center min-w-24"
         >
           {loading ? <Spinner size="sm" /> : t("settings.apiKey.saveCheck")}
         </button>

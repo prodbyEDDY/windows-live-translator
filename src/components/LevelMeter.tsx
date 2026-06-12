@@ -17,30 +17,39 @@ interface DirectionMeterProps {
   label: string;
 }
 
+const SEGMENTS = 5;
+
 /**
- * Compact 24-segment level meter rendered as a single rounded bar that fills by
- * width in the direction color. Used in the Live status strip.
+ * Compact discrete level meter: 5 segments (2px gap), filled in the direction
+ * color by level. Calmer than a continuous bar. Used in the Live status strip.
  */
 export function DirectionMeter({ db, tone, label }: DirectionMeterProps) {
   const pct = dbToPercent(db);
   const color = tone === "out" ? "var(--color-cobalt)" : "var(--color-tangerine)";
+  // How many of the 5 segments are lit.
+  const lit = Math.round((pct / 100) * SEGMENTS);
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[10.5px] font-medium text-muted w-9 shrink-0 truncate">
+      <span className="font-mono text-[10px] font-medium text-muted w-8 shrink-0 truncate tabular-nums uppercase tracking-tight">
         {label}
       </span>
       <div
-        className="relative h-[3px] w-24 rounded-pill bg-stone-200 overflow-hidden"
+        className="flex items-center gap-[2px]"
         role="meter"
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={label}
       >
-        <div
-          className="absolute inset-y-0 left-0 rounded-pill transition-[width] duration-100 ease-out"
-          style={{ width: `${pct}%`, background: color }}
-        />
+        {Array.from({ length: SEGMENTS }).map((_, i) => (
+          <span
+            key={i}
+            className="h-2.5 w-2 rounded-[1.5px] transition-colors duration-100 ease-out"
+            style={{
+              background: i < lit ? color : "var(--color-hairline)",
+            }}
+          />
+        ))}
       </div>
     </div>
   );

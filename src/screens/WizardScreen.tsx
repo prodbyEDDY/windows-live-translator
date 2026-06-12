@@ -95,7 +95,7 @@ export function WizardScreen() {
   };
 
   return (
-    <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center px-6 py-10">
+    <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center px-6 py-10 lt-screen-in">
       <div className="w-full max-w-[560px] flex flex-col gap-6">
         {/* Wordmark */}
         <div className="flex items-center gap-2.5 justify-center">
@@ -107,7 +107,7 @@ export function WizardScreen() {
 
         <StepProgress current={stepIdx} />
 
-        <div className="bg-surface border border-hairline rounded-card shadow-studio p-6 flex flex-col gap-5">
+        <div className="bg-surface border border-hairline rounded-card lt-card p-6 flex flex-col gap-5">
           <h2 className="font-display text-[18px] font-semibold tracking-tight text-ink">
             {stepTitles[step]}
           </h2>
@@ -138,7 +138,7 @@ export function WizardScreen() {
             <button
               onClick={goBack}
               disabled={stepIdx === 0}
-              className="px-4 h-10 rounded-pill border border-hairline text-[13px] text-ink hover:border-stone-300 disabled:opacity-40 transition-colors"
+              className="lt-press px-4 h-10 rounded-pill border border-hairline text-[13px] text-ink hover:border-stone-300 disabled:opacity-40"
             >
               {t("common.back")}
             </button>
@@ -147,7 +147,7 @@ export function WizardScreen() {
               <button
                 onClick={() => void finish()}
                 disabled={finishing}
-                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors"
+                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50"
               >
                 {t("wizard.test.allWorks")}
               </button>
@@ -155,7 +155,7 @@ export function WizardScreen() {
               <button
                 onClick={goNext}
                 disabled={!canAdvance}
-                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-40 disabled:hover:bg-cobalt transition-colors"
+                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-40 disabled:hover:bg-cobalt"
               >
                 {t("common.next")}
               </button>
@@ -188,9 +188,10 @@ function StepProgress({ current }: { current: number }) {
           <div key={label} className="flex items-start flex-1 min-w-0">
             <div className="flex flex-col items-center gap-1.5 shrink-0">
               <div
+                key={`${i}-${active}`}
                 className={`flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-mono font-medium transition-colors ${
                   active
-                    ? "bg-cobalt text-white"
+                    ? "bg-cobalt text-white lt-step-pulse"
                     : done
                       ? "bg-cobalt text-white"
                       : "bg-stone-100 text-muted border border-hairline"
@@ -334,7 +335,7 @@ function StepCable({
           <button
             onClick={() => void handleInstall()}
             disabled={installing}
-            className="self-start px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+            className="lt-press self-start px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
           >
             {installing ? (
               <>
@@ -493,7 +494,7 @@ function StepTest({
         {isRunning ? (
           <button
             onClick={() => void stopLive()}
-            className="px-4 h-10 rounded-pill border border-danger/50 text-danger hover:bg-danger/5 text-[13px] font-medium transition-colors"
+            className="lt-press px-4 h-10 rounded-pill border border-danger/50 text-danger hover:bg-danger/5 text-[13px] font-medium"
           >
             {t("wizard.test.stop")}
           </button>
@@ -501,7 +502,7 @@ function StepTest({
           <button
             onClick={() => void handleStart()}
             disabled={starting}
-            className="px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors"
+            className="lt-press px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50"
           >
             {t("wizard.test.start")}
           </button>

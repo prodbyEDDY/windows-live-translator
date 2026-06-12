@@ -171,6 +171,11 @@
     "audioSource": "Peer audio source",
     "systemAudio": "Entire system audio",
     "transcriptEmpty": "Transcript will appear here once the session starts",
+    "empty": {
+      "step1": "pick a source",
+      "step2": "press Start",
+      "step3": "speak"
+    },
     "scrollDown": "Scroll to bottom",
     "clearTranscript": "Clear",
     "alertNoKey": "API key missing or invalid",

@@ -144,9 +144,9 @@ export function HistoryScreen() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-4">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-4 lt-screen-in">
         {/* ---- Title + search + clear ---- */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 min-h-9">
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
             {t("screen.history")}
           </h1>
@@ -174,7 +174,7 @@ export function HistoryScreen() {
             <AlertDialogTrigger>
               <button
                 onClick={() => setClearDialogOpen(true)}
-                className="shrink-0 px-3.5 h-9 rounded-pill border border-danger/40 text-[12px] text-danger hover:bg-danger/5 transition-colors"
+                className="lt-press shrink-0 px-3.5 h-9 rounded-pill border border-danger/40 text-[12px] text-danger hover:bg-danger/5"
               >
                 {t("history.clearHistory")}
               </button>
@@ -218,18 +218,18 @@ export function HistoryScreen() {
           onSelectionChange={(key) => setTab(key as "calls" | "voice")}
           className="flex flex-col flex-1 min-h-0"
         >
-          <TabList className="flex gap-6 border-b border-hairline shrink-0">
+          <TabList className="flex justify-start gap-6 p-0 bg-transparent border-b border-hairline rounded-none shrink-0">
             {/* TabIndicator MUST live INSIDE a Tab. */}
             <Tab
               id="calls"
-              className="relative pb-2.5 text-[13px] font-medium text-muted data-[selected]:text-ink cursor-pointer outline-none"
+              className="relative flex-none w-auto px-0 pb-2.5 bg-transparent text-[13px] font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
             >
               {t("history.tabCalls")}
               <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
             </Tab>
             <Tab
               id="voice"
-              className="relative pb-2.5 text-[13px] font-medium text-muted data-[selected]:text-ink cursor-pointer outline-none"
+              className="relative flex-none w-auto px-0 pb-2.5 bg-transparent text-[13px] font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
             >
               {t("history.tabVoice")}
               <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
@@ -252,16 +252,16 @@ export function HistoryScreen() {
                   return (
                     <div
                       key={call.id}
-                      className="bg-surface border border-hairline rounded-card shadow-studio overflow-hidden"
+                      className="bg-surface border border-hairline rounded-card lt-card overflow-hidden"
                     >
                       <button
-                        className="flex items-center gap-3 px-4 py-3 text-left hover:bg-stone-50 transition-colors w-full"
+                        className="flex items-center gap-3 h-11 px-4 text-left hover:bg-stone-50 transition-colors w-full"
                         onClick={() => toggleCall(call.id)}
                       >
-                        <span className="text-[10px] text-muted shrink-0 select-none w-3">
+                        <span className="text-[9px] text-stone-400 shrink-0 select-none w-3">
                           {expanded ? "▼" : "▶"}
                         </span>
-                        <span className="font-mono text-[12px] text-muted shrink-0">
+                        <span className="font-mono text-[12px] text-muted shrink-0 tabular-nums">
                           {formatDate(call.startedAt)}
                         </span>
                         <LangPairPill from={call.myLang} to={call.peerLang} />
@@ -327,8 +327,8 @@ function Loading({ t }: { t: (k: string) => string }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
-      <span className="font-display text-[48px] leading-none text-stone-200">⌬</span>
+    <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
+      <span className="font-display text-[64px] leading-none text-stone-200">⌬</span>
       <p className="text-[13px] text-muted">{children}</p>
     </div>
   );

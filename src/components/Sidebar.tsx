@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Screen } from "../stores/app";
 import {
@@ -10,10 +10,12 @@ import {
   IconCross,
 } from "./Icons";
 
+type IconComponent = (p: SVGProps<SVGSVGElement> & { size?: number }) => ReactNode;
+
 interface NavItem {
   id: Screen;
   labelKey: string;
-  icon: (p: { size?: number }) => ReactNode;
+  icon: IconComponent;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -35,7 +37,7 @@ export function Sidebar() {
 
   return (
     <nav className="flex flex-col w-56 shrink-0 bg-paper border-r border-hairline py-3">
-      <div className="flex-1 flex flex-col gap-0.5 px-3">
+      <div className="flex-1 flex flex-col gap-0.5 px-2">
         {NAV_ITEMS.map((item) => {
           const active = screen === item.id;
           const Icon = item.icon;
@@ -43,41 +45,46 @@ export function Sidebar() {
             <button
               key={item.id}
               onClick={() => setScreen(item.id)}
+              aria-current={active ? "page" : undefined}
               className={[
-                "group relative flex items-center gap-3 h-10 pl-3 pr-3 rounded-[10px] text-[14px] font-medium transition-colors w-full text-left",
+                "lt-press group relative flex items-center gap-3 h-10 px-3 rounded-lg text-[14px] font-medium w-full text-left",
                 active
-                  ? "bg-cobalt-tint text-ink"
+                  ? "bg-cobalt-tint text-cobalt-deep"
                   : "text-muted hover:bg-stone-100 hover:text-ink",
               ].join(" ")}
             >
               {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-cobalt" />
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-cobalt" />
               )}
-              <Icon size={19} />
+              <Icon size={18} className={active ? "text-cobalt" : undefined} />
               <span>{t(item.labelKey)}</span>
             </button>
           );
         })}
       </div>
 
-      {/* ---- Bottom status rows ---- */}
-      <div className="px-3 pt-3 mt-2 border-t border-hairline flex flex-col gap-1">
-        <StatusRow
+      {/* ---- Bottom status badges + version ---- */}
+      <div className="px-3 pt-3 mt-2 border-t border-hairline flex flex-col gap-1.5">
+        <StatusBadge
           label="VB-CABLE"
           ok={cablePresent}
           onClick={() => setScreen("wizard")}
         />
-        <StatusRow
+        <StatusBadge
           label={t("settings.sections.apiKey")}
           ok={keyValid}
           onClick={() => setScreen("settings")}
         />
+        <span className="font-mono text-[10px] text-stone-400 tracking-tight px-1.5 pt-1.5">
+          v0.3.0
+        </span>
       </div>
     </nav>
   );
 }
 
-function StatusRow({
+/** Compact pill badge with a colored dot indicator. */
+function StatusBadge({
   label,
   ok,
   onClick,
@@ -89,16 +96,19 @@ function StatusRow({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 h-8 px-2 rounded-md text-[12px] text-muted hover:bg-stone-100 transition-colors w-full text-left"
+      className="lt-press group flex items-center gap-2 h-8 pl-2.5 pr-2 rounded-lg border border-hairline bg-surface text-[12px] text-muted hover:border-stone-300 hover:text-ink w-full text-left"
     >
       <span
-        className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${
-          ok ? "bg-ok/12 text-ok" : "bg-danger/12 text-danger"
+        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0 ${
+          ok ? "bg-ok/15 text-ok" : "bg-danger/15 text-danger"
         }`}
       >
-        {ok ? <IconCheck size={11} /> : <IconCross size={11} />}
+        {ok ? <IconCheck size={9} /> : <IconCross size={9} />}
       </span>
-      <span className="font-mono tracking-tight truncate">{label}</span>
+      <span className="font-mono tracking-tight truncate flex-1">{label}</span>
+      <span
+        className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-ok" : "bg-danger"}`}
+      />
     </button>
   );
 }

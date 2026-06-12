@@ -9,6 +9,11 @@ export function langLabel(code: string): string {
   return code.toUpperCase();
 }
 
+/** Native name (autonym) for a language code, falling back to the code itself. */
+export function langAutonym(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.autonym ?? code.toUpperCase();
+}
+
 export const LANGUAGES: Lang[] = [
   { code: "af", autonym: "Afrikaans" },
   { code: "ar", autonym: "العربية" },

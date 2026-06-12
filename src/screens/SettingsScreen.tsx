@@ -54,7 +54,7 @@ function deviceLabel(
 /** Settings surface card with an Unbounded section title. */
 function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="bg-surface border border-hairline rounded-card shadow-studio p-5 flex flex-col gap-4">
+    <section className="bg-surface border border-hairline rounded-card lt-card p-5 flex flex-col gap-4">
       <SectionTitle>{title}</SectionTitle>
       {children}
     </section>
@@ -130,7 +130,7 @@ export function DeviceSelect({
           if (open) onOpen();
         }}
       >
-        <SelectTrigger className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
+        <SelectTrigger className="lt-press w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
           <SelectValue className="flex-1 text-left truncate" />
           <SelectIndicator />
         </SelectTrigger>
@@ -182,7 +182,7 @@ export function SettingsScreen() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5">
+      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 lt-screen-in">
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
           {t("screen.settings")}
         </h1>
@@ -201,7 +201,7 @@ export function SettingsScreen() {
           <ApiKeyField />
           <button
             onClick={() => void openUrl("https://aistudio.google.com/apikey")}
-            className="text-[13px] text-cobalt hover:underline self-start"
+            className="text-[13px] text-cobalt hover:underline self-start rounded"
           >
             {t("settings.apiKey.getKey")}
           </button>
@@ -246,7 +246,7 @@ export function SettingsScreen() {
             </div>
             <button
               onClick={() => setScreen("wizard")}
-              className="px-3.5 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300 transition-colors"
+              className="lt-press px-3.5 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300"
             >
               {t("settings.audio.wizardButton")}
             </button>
@@ -347,7 +347,7 @@ export function SettingsScreen() {
               }}
               aria-label={t("settings.app.uiLang")}
             >
-              <SelectTrigger className="w-48 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
+              <SelectTrigger className="lt-press w-48 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
                 <SelectValue className="flex-1 text-left" />
                 <SelectIndicator />
               </SelectTrigger>
@@ -365,7 +365,7 @@ export function SettingsScreen() {
           </div>
 
           <p className="text-[12px] text-muted font-mono">
-            {t("settings.app.version")}: 0.1.0
+            {t("settings.app.version")}: 0.3.0
           </p>
         </SettingsCard>
       </div>

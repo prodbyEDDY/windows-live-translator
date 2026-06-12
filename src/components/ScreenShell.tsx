@@ -17,9 +17,9 @@ export function ScreenShell({
 }) {
   return (
     <div className={`flex-1 min-h-0 flex flex-col ${scroll ? "overflow-y-auto" : "overflow-hidden"}`}>
-      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 flex-1 min-h-0">
+      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 flex-1 min-h-0 lt-screen-in">
         {(title || toolbar) && (
-          <div className="flex items-end justify-between gap-4 shrink-0">
+          <div className="flex items-center justify-between gap-4 shrink-0 min-h-9">
             {title && (
               <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
                 {title}
@@ -34,10 +34,14 @@ export function ScreenShell({
   );
 }
 
-/** A card-section title in the studio style: Unbounded uppercase letterspaced. */
+/**
+ * A card-section title: 11px Unbounded uppercase letterspaced muted, preceded
+ * by a 16px-wide cobalt rule.
+ */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="font-display text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">
+    <h2 className="flex items-center gap-2.5 font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+      <span className="inline-block w-4 h-[2px] rounded-full bg-cobalt shrink-0" />
       {children}
     </h2>
   );
@@ -53,7 +57,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`bg-surface border border-hairline rounded-card shadow-studio ${className}`}
+      className={`bg-surface border border-hairline rounded-card lt-card ${className}`}
     >
       {children}
     </div>

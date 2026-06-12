@@ -74,6 +74,15 @@ export function VoiceCard({ record }: VoiceCardProps) {
   const isProcessing = stageIsProcessing(record.stage);
   const isDone = record.stage === "done";
 
+  // Pipeline progress: 0..3 steps complete (record → transcribe → synthesize).
+  const stepIndex = (() => {
+    if (errMsg) return 0;
+    if (isDone) return 3;
+    if (record.stage === "synthesizing") return 2;
+    if (record.stage === "transcribing") return 1;
+    return 0; // pending
+  })();
+
   async function handleCopy(text: string, which: "original" | "translation") {
     try {
       await navigator.clipboard.writeText(text);
@@ -128,16 +137,16 @@ export function VoiceCard({ record }: VoiceCardProps) {
     ? convertFileSrc(record.translatedAudioPath)
     : null;
 
-  // Stage pill tone
-  const stagePill = errMsg
-    ? "bg-danger/10 text-danger"
+  // Stage label tone
+  const stageColor = errMsg
+    ? "text-danger"
     : isDone
-      ? "bg-ok/10 text-ok"
-      : "bg-stone-100 text-muted";
+      ? "text-ok"
+      : "text-muted";
 
   return (
     <div
-      className="relative bg-surface border border-hairline rounded-card shadow-studio p-4 pl-5 flex flex-col gap-3 overflow-hidden"
+      className="relative bg-surface border border-hairline rounded-card lt-card lt-card-hover p-4 pl-5 flex flex-col gap-3 overflow-hidden"
     >
       <span
         className="absolute left-0 top-0 bottom-0 w-[3px]"
@@ -145,7 +154,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
       />
 
       {/* ---- Header ---- */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2.5">
         <span
           className="text-[13px] font-semibold"
           style={{ color: accent }}
@@ -153,12 +162,13 @@ export function VoiceCard({ record }: VoiceCardProps) {
           {kindLabel}
         </span>
         <span className="font-mono text-[11px] text-muted">{createdAt}</span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
+          {/* Inline progress line: label + thin 3-step track */}
           {errMsg ? (
             <Tooltip>
               <TooltipTrigger>
                 <span
-                  className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${stagePill} ${isProcessing ? "lt-pulse-dot" : ""}`}
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
                 >
                   {stageName}
                 </span>
@@ -166,16 +176,19 @@ export function VoiceCard({ record }: VoiceCardProps) {
               <TooltipContent>{errMsg}</TooltipContent>
             </Tooltip>
           ) : (
-            <span
-              className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${stagePill} ${isProcessing ? "lt-pulse-dot" : ""}`}
-            >
-              {stageName}
+            <span className="inline-flex items-center gap-2">
+              <span
+                className={`text-[11px] font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
+              >
+                {stageName}
+              </span>
+              <StageTrack steps={stepIndex} accent={accent} done={isDone} />
             </span>
           )}
           {errMsg && (
             <button
               onClick={() => void handleRetry()}
-              className="px-3 h-6 rounded-pill text-[11px] font-medium border border-hairline text-ink hover:border-stone-300 transition-colors"
+              className="lt-press px-3 h-6 rounded-pill text-[11px] font-medium border border-hairline text-ink hover:border-stone-300"
             >
               {t("voice.retry")}
             </button>
@@ -238,12 +251,12 @@ export function VoiceCard({ record }: VoiceCardProps) {
         </div>
       )}
 
-      {/* ---- Out + done: drag handle + save ---- */}
+      {/* ---- Out + done: drag handle (primary affordance) + save ---- */}
       {record.kind === "out" && isDone && record.translatedAudioPath && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-hairline">
+        <div className="flex flex-col gap-1.5 pt-3 border-t border-hairline">
           <div className="flex items-center gap-2 flex-wrap">
             <div
-              className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-pill border border-dashed border-stone-300 text-[12px] text-muted cursor-grab hover:text-cobalt hover:border-cobalt/50 hover:-translate-y-px hover:shadow-studio transition-all select-none"
+              className="lt-card lt-card-hover group flex items-center gap-2 pl-2.5 pr-3.5 h-9 rounded-pill border border-dashed border-cobalt/40 bg-cobalt-tint/50 text-[12px] font-medium text-cobalt-deep cursor-grab active:cursor-grabbing select-none"
               onMouseDown={() => void handleDragOut()}
               onDragStart={(e) => {
                 e.preventDefault();
@@ -251,12 +264,12 @@ export function VoiceCard({ record }: VoiceCardProps) {
               }}
               title={t("voice.dragHandle")}
             >
-              <IconGrip size={15} />
+              <IconGrip size={15} className="text-cobalt" />
               <span>{t("voice.dragHandle").replace("⠿ ", "")}</span>
             </div>
             <button
               onClick={() => void handleSaveAs()}
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300 transition-colors"
+              className="lt-press inline-flex items-center gap-1.5 px-3 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300"
             >
               <IconDownload size={14} />
               {t("voice.saveAs")}
@@ -266,5 +279,37 @@ export function VoiceCard({ record }: VoiceCardProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Thin 3-step pipeline track: record → transcribe → synthesize. */
+function StageTrack({
+  steps,
+  accent,
+  done,
+}: {
+  steps: number;
+  accent: string;
+  done: boolean;
+}) {
+  return (
+    <span className="inline-flex items-center gap-[3px]" aria-hidden="true">
+      {[0, 1, 2].map((i) => {
+        const filled = i < steps;
+        return (
+          <span
+            key={i}
+            className="h-[3px] w-4 rounded-full transition-colors duration-200"
+            style={{
+              background: filled
+                ? done
+                  ? "var(--color-ok)"
+                  : accent
+                : "var(--color-hairline)",
+            }}
+          />
+        );
+      })}
+    </span>
   );
 }
