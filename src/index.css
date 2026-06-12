@@ -1,5 +1,175 @@
 @import "tailwindcss";
 @import "@heroui/react/styles";
 
+/* ---- Offline fonts (fontsource) ---- */
+@import "@fontsource-variable/unbounded";
+@import "@fontsource-variable/golos-text";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 @source "../node_modules/@heroui/react/dist";
 @source "../node_modules/@heroui/styles/dist";
+
+/* =========================================================================
+   "Студия синхронного перевода" — duotone studio theme
+   ========================================================================= */
+@theme {
+  /* Surfaces & ink */
+  --color-paper: #faf9f6;
+  --color-surface: #ffffff;
+  --color-ink: #1c1917;
+  --color-muted: #78716c;
+  --color-hairline: #e7e5e4;
+
+  /* «Вы» — out direction: cobalt */
+  --color-cobalt: #1e5bd7;
+  --color-cobalt-tint: #eef3fe;
+  --color-cobalt-deep: #173fa0;
+
+  /* «Собеседник» — in direction: tangerine */
+  --color-tangerine: #e2620e;
+  --color-tangerine-tint: #fdf1e7;
+  --color-tangerine-deep: #b34a05;
+
+  /* Semantic */
+  --color-ok: #177e5b;
+  --color-danger: #c2362b;
+  --color-warn: #b97d10;
+
+  /* Radii */
+  --radius-card: 12px;
+  --radius-pill: 999px;
+
+  /* Fonts */
+  --font-display: "Unbounded Variable", "Unbounded", ui-sans-serif, sans-serif;
+  --font-body: "Golos Text Variable", "Golos Text", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Shadow */
+  --shadow-studio: 0 1px 2px rgb(28 25 23 / 0.05), 0 8px 24px rgb(28 25 23 / 0.06);
+}
+
+/* ---- Base ---- */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Atmospheric grain — 2.5% opacity feTurbulence overlay */
+.grain-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- Custom scrollbar ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+
+/* ---- Focus rings ---- */
+:focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   Animations (all ≤250ms, ease-out; reduced-motion respected below)
+   ========================================================================= */
+@keyframes lt-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.lt-bubble-in {
+  animation: lt-bubble-in 180ms ease-out both;
+}
+
+@keyframes lt-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.lt-wave-bar {
+  transform-origin: center bottom;
+  animation: lt-wave 900ms ease-in-out infinite;
+}
+
+@keyframes lt-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+.lt-pulse-dot {
+  animation: lt-pulse-dot 1200ms ease-in-out infinite;
+}
+
+@keyframes lt-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+.lt-ring {
+  animation: lt-ring 1400ms ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-bubble-in,
+  .lt-wave-bar,
+  .lt-pulse-dot,
+  .lt-ring {
+    animation: none !important;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}

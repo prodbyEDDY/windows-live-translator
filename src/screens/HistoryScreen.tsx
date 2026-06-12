@@ -11,7 +11,6 @@ import {
   AlertDialogRoot,
   AlertDialogTrigger,
   Button,
-  Input,
   Spinner,
   Tab,
   TabIndicator,
@@ -22,11 +21,11 @@ import {
 import { ipc, type CallRecord, type VoiceRecord } from "../lib/ipc";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { VoiceCard } from "../components/VoiceCard";
+import { LangPairPill } from "../components/LangPairPill";
+import { IconSearch } from "../components/Icons";
 import { previewText } from "../lib/history";
 import { useAppStore } from "../stores/app";
 import type { TranscriptLine } from "../lib/transcript";
-
-// ---- helpers ----
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -45,38 +44,24 @@ function formatDate(iso: string): string {
   });
 }
 
-// ---- main component ----
-
 export function HistoryScreen() {
   const { t } = useTranslation();
 
-  // Tab state
   const [tab, setTab] = useState<"calls" | "voice">("calls");
-
-  // Search
   const [search, setSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Call records
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [callsLoading, setCallsLoading] = useState(false);
-
-  // Voice records
   const [voiceRecords, setVoiceRecords] = useState<VoiceRecord[]>([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
-
-  // Expanded call rows (accordion state)
   const [expandedCallIds, setExpandedCallIds] = useState<Set<number>>(new Set());
-
-  // Confirm-clear dialog open state (controlled manually for AlertDialog)
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
-  // We need to clear the store's voiceMessages after historyClear
   const clearStoreVoice = useCallback(() => {
     useAppStore.setState({ voiceMessages: [] });
   }, []);
 
-  // Load call list
   const loadCalls = useCallback(async (q?: string) => {
     setCallsLoading(true);
     try {
@@ -87,7 +72,6 @@ export function HistoryScreen() {
     }
   }, []);
 
-  // Load voice list
   const loadVoice = useCallback(async (q?: string) => {
     setVoiceLoading(true);
     try {
@@ -98,7 +82,6 @@ export function HistoryScreen() {
     }
   }, []);
 
-  // Load on mount and on tab switch
   useEffect(() => {
     void loadCalls(search || undefined);
     void loadVoice(search || undefined);
@@ -111,7 +94,6 @@ export function HistoryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // Debounced search
   function handleSearchChange(value: string) {
     setSearch(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -121,7 +103,6 @@ export function HistoryScreen() {
     }, 300);
   }
 
-  // Toggle call row expansion
   function toggleCall(id: number) {
     setExpandedCallIds((prev) => {
       const next = new Set(prev);
@@ -131,24 +112,22 @@ export function HistoryScreen() {
     });
   }
 
-  // Parse transcript JSON for a call row
   function parseTranscriptLines(json: string): TranscriptLine[] {
     try {
       const parsed = JSON.parse(json);
       if (Array.isArray(parsed)) return parsed as TranscriptLine[];
     } catch {
-      // fall through
+      /* fall through */
     }
     return [];
   }
 
-  // Handle clear history
   async function handleClearHistory() {
     setClearDialogOpen(false);
     try {
       await ipc.historyClear();
     } catch {
-      // best-effort
+      /* best-effort */
     }
     clearStoreVoice();
     setCalls([]);
@@ -156,183 +135,193 @@ export function HistoryScreen() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* ---- Top bar: search + clear ---- */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 bg-white">
-        <Input
-          type="search"
-          placeholder={t("history.searchPlaceholder")}
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          className="flex-1"
-        />
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-4">
+        {/* ---- Title + search + clear ---- */}
+        <div className="flex items-center gap-3 shrink-0">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
+            {t("screen.history")}
+          </h1>
+          <div className="flex-1" />
+          {/* Search pill */}
+          <div className="relative w-56">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+              <IconSearch size={15} />
+            </span>
+            <input
+              type="search"
+              placeholder={t("history.searchPlaceholder")}
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 rounded-pill border border-hairline bg-surface text-[13px] text-ink placeholder:text-muted focus:border-cobalt/50 outline-none transition-colors"
+            />
+          </div>
 
-        {/* Clear history button + confirm dialog */}
-        <AlertDialogRoot
-          isOpen={clearDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) setClearDialogOpen(false);
-          }}
-        >
-          <AlertDialogTrigger>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-red-600 border-red-300 hover:border-red-400 flex-shrink-0"
-              onPress={() => setClearDialogOpen(true)}
-            >
-              {t("history.clearHistory")}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogBackdrop isDismissable>
-            <AlertDialogContainer>
-              <AlertDialogDialog>
-                <AlertDialogHeader>
-                  <AlertDialogHeading>
-                    {t("history.confirmClearTitle")}
-                  </AlertDialogHeading>
-                </AlertDialogHeader>
-                <AlertDialogBody>
-                  <p className="text-sm text-gray-600">
-                    {t("history.confirmClearBody")}
-                  </p>
-                </AlertDialogBody>
-                <AlertDialogFooter>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onPress={() => setClearDialogOpen(false)}
-                  >
-                    {t("common.cancel")}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onPress={() => void handleClearHistory()}
-                  >
-                    {t("history.confirmClearOk")}
-                  </Button>
-                </AlertDialogFooter>
-              </AlertDialogDialog>
-            </AlertDialogContainer>
-          </AlertDialogBackdrop>
-        </AlertDialogRoot>
-      </div>
-
-      {/* ---- Tabs ---- */}
-      <TabsRoot
-        selectedKey={tab}
-        onSelectionChange={(key) => setTab(key as "calls" | "voice")}
-        className="flex flex-col flex-1 overflow-hidden"
-      >
-        <TabList className="px-4 pt-2 border-b border-gray-200 bg-white flex gap-1">
-          {/* TabIndicator is a react-aria SelectionIndicator: it must live INSIDE
-              a Tab (the SharedElementTransition wraps collection items only) —
-              as a TabList sibling it throws and white-screens the app. */}
-          <Tab id="calls">
-            {t("history.tabCalls")}
-            <TabIndicator />
-          </Tab>
-          <Tab id="voice">
-            {t("history.tabVoice")}
-            <TabIndicator />
-          </Tab>
-        </TabList>
-
-        {/* ---- Calls tab ---- */}
-        <TabPanel id="calls" className="flex-1 overflow-y-auto">
-          {callsLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <Spinner size="sm" />
-              <span className="ml-2 text-sm text-gray-400">{t("history.loading")}</span>
-            </div>
-          ) : calls.length === 0 ? (
-            <div className="flex items-center justify-center p-8 text-gray-400 text-sm">
-              {t("history.emptyCalls")}
-            </div>
-          ) : (
-            <div className="flex flex-col divide-y divide-gray-100">
-              {calls.map((call) => {
-                const expanded = expandedCallIds.has(call.id);
-                const preview = previewText(call.transcriptJson, 80);
-                const lines = expanded ? parseTranscriptLines(call.transcriptJson) : [];
-
-                return (
-                  <div key={call.id} className="flex flex-col">
-                    {/* Row header — clickable to expand */}
-                    <button
-                      className="flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors w-full"
-                      onClick={() => toggleCall(call.id)}
+          <AlertDialogRoot
+            isOpen={clearDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) setClearDialogOpen(false);
+            }}
+          >
+            <AlertDialogTrigger>
+              <button
+                onClick={() => setClearDialogOpen(true)}
+                className="shrink-0 px-3.5 h-9 rounded-pill border border-danger/40 text-[12px] text-danger hover:bg-danger/5 transition-colors"
+              >
+                {t("history.clearHistory")}
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogBackdrop isDismissable>
+              <AlertDialogContainer>
+                <AlertDialogDialog>
+                  <AlertDialogHeader>
+                    <AlertDialogHeading>
+                      {t("history.confirmClearTitle")}
+                    </AlertDialogHeading>
+                  </AlertDialogHeader>
+                  <AlertDialogBody>
+                    <p className="text-sm text-muted">{t("history.confirmClearBody")}</p>
+                  </AlertDialogBody>
+                  <AlertDialogFooter>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onPress={() => setClearDialogOpen(false)}
                     >
-                      {/* Expand icon */}
-                      <span className="mt-0.5 text-xs text-gray-400 flex-shrink-0 select-none">
-                        {expanded ? "▼" : "▶"}
-                      </span>
+                      {t("common.cancel")}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onPress={() => void handleClearHistory()}
+                    >
+                      {t("history.confirmClearOk")}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogDialog>
+              </AlertDialogContainer>
+            </AlertDialogBackdrop>
+          </AlertDialogRoot>
+        </div>
 
-                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                        {/* Date + lang pair + duration */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-gray-500">
-                            {formatDate(call.startedAt)}
-                          </span>
-                          <span className="text-xs font-medium text-gray-700">
-                            {call.myLang}
-                            {" "}
-                            {t("history.langPairSeparator")}
-                            {" "}
-                            {call.peerLang}
-                          </span>
-                          <span className="text-xs text-gray-400 tabular-nums ml-auto">
-                            {formatDuration(call.durationSecs)}
-                          </span>
-                        </div>
+        {/* ---- Tabs ---- */}
+        <TabsRoot
+          selectedKey={tab}
+          onSelectionChange={(key) => setTab(key as "calls" | "voice")}
+          className="flex flex-col flex-1 min-h-0"
+        >
+          <TabList className="flex gap-6 border-b border-hairline shrink-0">
+            {/* TabIndicator MUST live INSIDE a Tab. */}
+            <Tab
+              id="calls"
+              className="relative pb-2.5 text-[13px] font-medium text-muted data-[selected]:text-ink cursor-pointer outline-none"
+            >
+              {t("history.tabCalls")}
+              <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
+            </Tab>
+            <Tab
+              id="voice"
+              className="relative pb-2.5 text-[13px] font-medium text-muted data-[selected]:text-ink cursor-pointer outline-none"
+            >
+              {t("history.tabVoice")}
+              <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
+            </Tab>
+          </TabList>
 
-                        {/* Preview text */}
+          {/* ---- Calls ---- */}
+          <TabPanel id="calls" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-3">
+            {callsLoading ? (
+              <Loading t={t} />
+            ) : calls.length === 0 ? (
+              <Empty>{t("history.emptyCalls")}</Empty>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {calls.map((call) => {
+                  const expanded = expandedCallIds.has(call.id);
+                  const preview = previewText(call.transcriptJson, 90);
+                  const lines = expanded ? parseTranscriptLines(call.transcriptJson) : [];
+
+                  return (
+                    <div
+                      key={call.id}
+                      className="bg-surface border border-hairline rounded-card shadow-studio overflow-hidden"
+                    >
+                      <button
+                        className="flex items-center gap-3 px-4 py-3 text-left hover:bg-stone-50 transition-colors w-full"
+                        onClick={() => toggleCall(call.id)}
+                      >
+                        <span className="text-[10px] text-muted shrink-0 select-none w-3">
+                          {expanded ? "▼" : "▶"}
+                        </span>
+                        <span className="font-mono text-[12px] text-muted shrink-0">
+                          {formatDate(call.startedAt)}
+                        </span>
+                        <LangPairPill from={call.myLang} to={call.peerLang} />
                         {preview && !expanded && (
-                          <p className="text-sm text-gray-500 truncate">{preview}</p>
+                          <span className="text-[13px] text-muted truncate flex-1 min-w-0">
+                            {preview}
+                          </span>
                         )}
-                      </div>
-                    </button>
+                        <span className="font-mono text-[12px] text-ink tabular-nums ml-auto shrink-0">
+                          {formatDuration(call.durationSecs)}
+                        </span>
+                      </button>
 
-                    {/* Expanded transcript */}
-                    {expanded && (
-                      <div className="border-t border-gray-100 bg-gray-50" style={{ minHeight: 120, maxHeight: 400, display: "flex", flexDirection: "column" }}>
-                        {lines.length > 0 ? (
-                          <TranscriptFeed lines={lines} />
-                        ) : (
-                          <div className="flex items-center justify-center p-4 text-gray-400 text-xs">
-                            —
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </TabPanel>
+                      {expanded && (
+                        <div
+                          className="border-t border-hairline bg-paper"
+                          style={{ minHeight: 120, maxHeight: 380, display: "flex", flexDirection: "column" }}
+                        >
+                          {lines.length > 0 ? (
+                            <TranscriptFeed lines={lines} />
+                          ) : (
+                            <div className="flex items-center justify-center p-4 text-muted text-xs">
+                              —
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabPanel>
 
-        {/* ---- Voice tab ---- */}
-        <TabPanel id="voice" className="flex-1 overflow-y-auto">
-          {voiceLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <Spinner size="sm" />
-              <span className="ml-2 text-sm text-gray-400">{t("history.loading")}</span>
-            </div>
-          ) : voiceRecords.length === 0 ? (
-            <div className="flex items-center justify-center p-8 text-gray-400 text-sm">
-              {t("history.emptyVoice")}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 p-4">
-              {voiceRecords.map((rec) => (
-                <VoiceCard key={rec.id} record={rec} />
-              ))}
-            </div>
-          )}
-        </TabPanel>
-      </TabsRoot>
+          {/* ---- Voice ---- */}
+          <TabPanel id="voice" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-3">
+            {voiceLoading ? (
+              <Loading t={t} />
+            ) : voiceRecords.length === 0 ? (
+              <Empty>{t("history.emptyVoice")}</Empty>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {voiceRecords.map((rec) => (
+                  <VoiceCard key={rec.id} record={rec} />
+                ))}
+              </div>
+            )}
+          </TabPanel>
+        </TabsRoot>
+      </div>
+    </div>
+  );
+}
+
+function Loading({ t }: { t: (k: string) => string }) {
+  return (
+    <div className="flex items-center justify-center p-8">
+      <Spinner size="sm" />
+      <span className="ml-2 text-sm text-muted">{t("history.loading")}</span>
+    </div>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+      <span className="font-display text-[48px] leading-none text-stone-200">⌬</span>
+      <p className="text-[13px] text-muted">{children}</p>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "./stores/app";
 import { Sidebar } from "./components/Sidebar";
+import { Header } from "./components/Header";
 import { LiveScreen } from "./screens/LiveScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { VoiceScreen } from "./screens/VoiceScreen";
@@ -41,13 +42,28 @@ function App() {
     }
   }
 
+  // The wizard is a focused, full-window flow — no app chrome.
+  if (screen === "wizard") {
+    return (
+      <div className="grain-overlay relative h-screen w-screen bg-paper overflow-hidden">
+        <title>{t("app.title")}</title>
+        <WizardScreen />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-row min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-paper text-ink">
       <title>{t("app.title")}</title>
-      {screen !== "wizard" && <Sidebar />}
-      <main className="flex flex-1 overflow-auto">
-        {renderScreen()}
-      </main>
+      <Header />
+      <div className="flex flex-1 min-h-0">
+        <Sidebar />
+        <main className="grain-overlay relative flex-1 min-w-0 flex flex-col bg-paper overflow-hidden">
+          <div className="relative z-10 flex-1 min-h-0 flex flex-col">
+            {renderScreen()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
