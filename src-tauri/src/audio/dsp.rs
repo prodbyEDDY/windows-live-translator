@@ -1,8 +1,17 @@
 use rubato::{Async, FixedAsync, PolynomialDegree, Resampler};
-use rubato::audioadapter::Adapter;
-use rubato::audioadapter_buffers::direct::InterleavedSlice;
+use rubato::audioadapter_buffers::direct::SequentialSlice;
 
+/// Mix a multi-channel interleaved buffer down to mono by averaging channels.
+///
+/// # Panics (debug only)
+/// Asserts that `interleaved.len()` is a multiple of `channels`.
 pub fn downmix_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
+    debug_assert!(
+        interleaved.len() % channels == 0,
+        "interleaved buffer length {} is not a multiple of channels {}",
+        interleaved.len(),
+        channels
+    );
     if channels <= 1 {
         return interleaved.to_vec();
     }
@@ -12,6 +21,11 @@ pub fn downmix_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
         .collect()
 }
 
+/// Convert f32 PCM samples (−1.0 … +1.0) to i16.
+///
+/// Uses 32767 as the positive full-scale multiplier intentionally: this is a
+/// one-way encoding pipeline (f32 → wire format), so asymmetry is acceptable
+/// and avoids overflow on the positive side. Do not "fix" this to 32768.
 pub fn f32_to_i16(samples: &[f32]) -> Vec<i16> {
     samples
         .iter()
@@ -19,6 +33,12 @@ pub fn f32_to_i16(samples: &[f32]) -> Vec<i16> {
         .collect()
 }
 
+/// Convert i16 PCM samples to f32 (−1.0 … +1.0).
+///
+/// Uses 32768 as the divisor intentionally: the minimum i16 value (−32768)
+/// maps exactly to −1.0, while the maximum (+32767) maps to ≈ +0.9999695.
+/// This is a one-way decoding pipeline (wire format → f32), so the slight
+/// asymmetry is expected and correct. Do not "fix" this to 32767.
 pub fn i16_to_f32(samples: &[i16]) -> Vec<f32> {
     samples.iter().map(|s| *s as f32 / 32768.0).collect()
 }
@@ -33,13 +53,15 @@ pub fn rms_db(samples: &[f32]) -> f32 {
 
 /// Streaming mono resampler accepting arbitrary input lengths.
 ///
-/// Rubato 3.0 adaptation: replaces `FastFixedIn` / `PolynomialDegree` (0.16 API)
-/// with `Async::new_poly` + `FixedAsync::Input` (3.0 API). The `process()` method
-/// now takes an `Adapter` trait object; we wrap slices via
-/// `rubato::audioadapter_buffers::direct::InterleavedSlice`.
+/// Uses `process_into_buffer` with a pre-allocated output buffer (sized via
+/// `output_frames_max()` at construction) to avoid per-block heap allocation
+/// on the hot path. Input blocking uses `input_frames_next()` so the block
+/// size stays accurate across any internal state changes.
 pub struct StreamResampler {
     inner: Async<f32>,
-    block: usize,
+    /// Pre-allocated output buffer (mono: 1 channel × output_frames_max frames).
+    out_buf: Vec<f32>,
+    /// Accumulated input samples not yet consumed.
     buf: Vec<f32>,
 }
 
@@ -57,9 +79,13 @@ impl StreamResampler {
             FixedAsync::Input,
         )
         .expect("StreamResampler construction failed");
+        // Pre-allocate output buffer: rubato recommends this for realtime use.
+        // output_frames_max() gives the upper bound of frames per process call.
+        let out_frames = inner.output_frames_max();
+        let out_buf = vec![0.0f32; out_frames]; // 1 channel × out_frames
         Self {
             inner,
-            block,
+            out_buf,
             buf: Vec::new(),
         }
     }
@@ -67,19 +93,26 @@ impl StreamResampler {
     pub fn push(&mut self, input: &[f32]) -> Vec<f32> {
         self.buf.extend_from_slice(input);
         let mut out = Vec::new();
-        while self.buf.len() >= self.block {
-            let chunk: Vec<f32> = self.buf.drain(..self.block).collect();
-            let adapter = InterleavedSlice::new(&chunk[..], 1, chunk.len())
+        // Use input_frames_next() instead of a stored block field so the
+        // required input size is always accurate.
+        while self.buf.len() >= self.inner.input_frames_next() {
+            let block = self.inner.input_frames_next();
+            // Build adapters directly from slices — no drain/collect allocation.
+            // For mono, sequential layout is identical to a plain flat slice.
+            let in_adapter = SequentialSlice::new(&self.buf[..block], 1, block)
                 .expect("input adapter");
-            if let Ok(owned) = self.inner.process(&adapter, 0, None) {
-                // For mono (1 channel), interleaved layout == plain samples.
-                // output_frames_next() tells us how many frames were actually produced.
-                let frames = owned.frames();
-                for f in 0..frames {
-                    // SAFETY: channel 0, frame f are always in-bounds for a 1-ch buffer.
-                    out.push(owned.read_sample(0, f).unwrap_or(0.0));
-                }
+            let out_capacity = self.out_buf.len();
+            let mut out_adapter =
+                SequentialSlice::new_mut(&mut self.out_buf[..], 1, out_capacity)
+                    .expect("output adapter");
+            if let Ok((_in_frames, frames)) =
+                self.inner.process_into_buffer(&in_adapter, &mut out_adapter, None)
+            {
+                // Copy only the produced frames; no per-sample read_sample call.
+                out.extend_from_slice(&self.out_buf[..frames]);
             }
+            // Drain the consumed input only after the borrow on self.buf ends.
+            self.buf.drain(..block);
         }
         out
     }
