@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod store;
 pub mod gemini;
 
