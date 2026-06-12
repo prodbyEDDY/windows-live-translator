@@ -182,6 +182,8 @@
     "startBlockedNoApp": "Select an app to capture",
     "sessionOut": "You →",
     "sessionIn": "→ You",
+    "sessionOutLabel": "You",
+    "sessionInLabel": "Peer",
     "sessionOff": "off",
     "sessionConnecting": "connecting",
     "sessionRunning": "running",

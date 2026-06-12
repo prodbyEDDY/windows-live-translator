@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  Card,
-  Chip,
   ListBox,
   ListBoxItem,
   SelectRoot,
@@ -20,6 +14,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
 import { ApiKeyField } from "../components/ApiKeyField";
 import { TranscriptFeed } from "../components/TranscriptFeed";
+import { Banner } from "../components/Banner";
+import { WaveformGlyph, IconCheck } from "../components/Icons";
 import { buildDeviceOptions } from "./SettingsScreen";
 import { looksLikeHeadphones } from "../lib/echo";
 import { ipc } from "../lib/ipc";
@@ -32,9 +28,7 @@ import {
   buildTestConfig,
 } from "../lib/wizard";
 
-/** Milliseconds with no cable detection after install before the reboot hint. */
 const REBOOT_HINT_AFTER_MS = 30_000;
-/** Cable re-poll interval while on the VB-CABLE step. */
 const CABLE_POLL_MS = 2_000;
 
 export function WizardScreen() {
@@ -57,8 +51,8 @@ export function WizardScreen() {
 
   if (!settings) {
     return (
-      <div className="flex-1 p-6 flex items-center justify-center">
-        <span className="text-gray-400">{t("common.loading")}</span>
+      <div className="relative z-10 flex-1 flex items-center justify-center h-full">
+        <span className="text-muted">{t("common.loading")}</span>
       </div>
     );
   }
@@ -66,13 +60,8 @@ export function WizardScreen() {
   const cablePresent = devices?.cablePresent ?? false;
   const keyValid = keyStatus?.state === "valid";
 
-  // Per-step gating for the "Next" button.
   const canAdvance =
-    step === "key"
-      ? keyValid
-      : step === "cable"
-        ? cablePresent
-        : true; // devices + test steps are not gated
+    step === "key" ? keyValid : step === "cable" ? cablePresent : true;
 
   function goNext() {
     setStepIdx((i) => Math.min(i + 1, WIZARD_STEPS.length - 1));
@@ -87,60 +76,75 @@ export function WizardScreen() {
     setScreen("live");
   }
 
+  const stepTitles: Record<string, string> = {
+    key: t("wizard.key.heading"),
+    cable: t("wizard.cable.heading"),
+    devices: t("wizard.devices.heading"),
+    test: t("wizard.test.heading"),
+  };
+
   return (
-    <div className="flex-1 flex flex-col items-center p-6 overflow-auto">
-      <div className="w-full max-w-2xl flex flex-col gap-6">
-        <header className="flex flex-col gap-3">
-          <h1 className="text-xl font-semibold text-gray-800">
-            {t("wizard.title")}
-          </h1>
-          <StepIndicator current={stepIdx} />
-        </header>
+    <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center px-6 py-10">
+      <div className="w-full max-w-[560px] flex flex-col gap-6">
+        {/* Wordmark */}
+        <div className="flex items-center gap-2.5 justify-center">
+          <WaveformGlyph active={false} />
+          <span className="font-display text-[13px] font-semibold tracking-[0.14em] text-ink">
+            LIVE&nbsp;TRANSLATOR
+          </span>
+        </div>
 
-        {step === "key" && <StepKey keyValid={keyValid} t={t} />}
-        {step === "cable" && (
-          <StepCable
-            cablePresent={cablePresent}
-            refreshDevices={refreshDevices}
-            t={t}
-          />
-        )}
-        {step === "devices" && <StepDevices t={t} />}
-        {step === "test" && (
-          <StepTest
-            settings={settings}
-            liveState={liveState}
-            transcript={transcript}
-            startLive={startLive}
-            stopLive={stopLive}
-            clearTranscript={clearTranscript}
-            t={t}
-          />
-        )}
+        <StepProgress current={stepIdx} />
 
-        {/* ---- Navigation ---- */}
-        <div className="flex items-center justify-between pt-2">
-          <Button
-            variant="outline"
-            onPress={goBack}
-            isDisabled={stepIdx === 0}
-          >
-            {t("common.back")}
-          </Button>
+        <div className="bg-surface border border-hairline rounded-card shadow-studio p-6 flex flex-col gap-5">
+          <h2 className="font-display text-[18px] font-semibold tracking-tight text-ink">
+            {stepTitles[step]}
+          </h2>
 
-          {step === "test" ? (
-            <Button variant="primary" onPress={() => void finish()}>
-              {t("wizard.test.allWorks")}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onPress={goNext}
-              isDisabled={!canAdvance}
-            >
-              {t("common.next")}
-            </Button>
+          {step === "key" && <StepKey keyValid={keyValid} t={t} />}
+          {step === "cable" && (
+            <StepCable cablePresent={cablePresent} refreshDevices={refreshDevices} t={t} />
           )}
+          {step === "devices" && <StepDevices t={t} />}
+          {step === "test" && (
+            <StepTest
+              settings={settings}
+              liveState={liveState}
+              transcript={transcript}
+              startLive={startLive}
+              stopLive={stopLive}
+              clearTranscript={clearTranscript}
+              t={t}
+            />
+          )}
+
+          {/* ---- Navigation ---- */}
+          <div className="flex items-center justify-between pt-2 border-t border-hairline">
+            <button
+              onClick={goBack}
+              disabled={stepIdx === 0}
+              className="px-4 h-10 rounded-pill border border-hairline text-[13px] text-ink hover:border-stone-300 disabled:opacity-40 transition-colors"
+            >
+              {t("common.back")}
+            </button>
+
+            {step === "test" ? (
+              <button
+                onClick={() => void finish()}
+                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium transition-colors"
+              >
+                {t("wizard.test.allWorks")}
+              </button>
+            ) : (
+              <button
+                onClick={goNext}
+                disabled={!canAdvance}
+                className="px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-40 disabled:hover:bg-cobalt transition-colors"
+              >
+                {t("common.next")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -148,10 +152,10 @@ export function WizardScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Step indicator (progress dots + labels)
+// Numbered progress
 // ---------------------------------------------------------------------------
 
-function StepIndicator({ current }: { current: number }) {
+function StepProgress({ current }: { current: number }) {
   const { t } = useTranslation();
   const labels = [
     t("wizard.steps.key"),
@@ -160,27 +164,27 @@ function StepIndicator({ current }: { current: number }) {
     t("wizard.steps.test"),
   ];
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-start">
       {labels.map((label, i) => {
         const done = i < current;
         const active = i === current;
         return (
-          <div key={label} className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
+          <div key={label} className="flex items-start flex-1 min-w-0">
+            <div className="flex flex-col items-center gap-1.5 shrink-0">
               <div
-                className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium flex-shrink-0 ${
+                className={`flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-mono font-medium transition-colors ${
                   active
-                    ? "bg-blue-500 text-white"
+                    ? "bg-cobalt text-white"
                     : done
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-200 text-gray-500"
+                      ? "bg-cobalt text-white"
+                      : "bg-stone-100 text-muted border border-hairline"
                 }`}
               >
-                {done ? "✓" : i + 1}
+                {done ? <IconCheck size={14} /> : i + 1}
               </div>
               <span
-                className={`text-xs truncate ${
-                  active ? "text-gray-800 font-medium" : "text-gray-400"
+                className={`text-[11px] text-center truncate max-w-16 ${
+                  active ? "text-ink font-medium" : "text-muted"
                 }`}
               >
                 {label}
@@ -188,8 +192,8 @@ function StepIndicator({ current }: { current: number }) {
             </div>
             {i < labels.length - 1 && (
               <div
-                className={`h-0.5 flex-1 rounded ${
-                  done ? "bg-green-500" : "bg-gray-200"
+                className={`h-[2px] flex-1 rounded-full mt-3.5 mx-1 ${
+                  done ? "bg-cobalt" : "bg-hairline"
                 }`}
               />
             )}
@@ -204,32 +208,21 @@ function StepIndicator({ current }: { current: number }) {
 // Step 1: API key
 // ---------------------------------------------------------------------------
 
-function StepKey({
-  keyValid,
-  t,
-}: {
-  keyValid: boolean;
-  t: (k: string) => string;
-}) {
+function StepKey({ keyValid, t }: { keyValid: boolean; t: (k: string) => string }) {
   return (
-    <Card className="p-5 flex flex-col gap-4">
-      <h2 className="text-base font-semibold text-gray-700">
-        {t("wizard.key.heading")}
-      </h2>
-      <p className="text-sm text-gray-500">{t("wizard.key.desc")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.key.desc")}</p>
       <ApiKeyField />
       <button
         onClick={() => void openUrl(AI_STUDIO_URL)}
-        className="text-sm text-blue-600 hover:underline self-start"
+        className="text-[13px] text-cobalt hover:underline self-start"
       >
         {t("wizard.key.getKey")}
       </button>
       {keyValid && (
-        <Chip color="success" size="sm">
-          {t("wizard.key.ready")}
-        </Chip>
+        <Banner tone="ok" description={t("wizard.key.ready")} />
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -250,11 +243,8 @@ function StepCable({
   const [errKey, setErrKey] = useState<string | null>(null);
   const [showDownloadFallback, setShowDownloadFallback] = useState(false);
   const [showRebootHint, setShowRebootHint] = useState(false);
-  // Track whether an install run has completed (we then watch for detection).
   const installFinishedAt = useRef<number | null>(null);
 
-  // Poll wizard_state every 2s while the cable is absent (fallback to the
-  // devices:changed event which the store already subscribes to).
   useEffect(() => {
     if (cablePresent) return;
     let cancelled = false;
@@ -264,9 +254,7 @@ function StepCable({
         .then(() => {
           if (!cancelled) void refreshDevices();
         })
-        .catch(() => {
-          /* transient; next tick retries */
-        });
+        .catch(() => {});
     }, CABLE_POLL_MS);
     return () => {
       cancelled = true;
@@ -274,8 +262,6 @@ function StepCable({
     };
   }, [cablePresent, refreshDevices]);
 
-  // After an install finishes, if the cable still isn't detected within ~30s,
-  // surface the "may need a reboot" hint.
   useEffect(() => {
     if (cablePresent) {
       setShowRebootHint(false);
@@ -283,8 +269,7 @@ function StepCable({
       return;
     }
     if (installFinishedAt.current == null) return;
-    const remaining =
-      REBOOT_HINT_AFTER_MS - (Date.now() - installFinishedAt.current);
+    const remaining = REBOOT_HINT_AFTER_MS - (Date.now() - installFinishedAt.current);
     if (remaining <= 0) {
       setShowRebootHint(true);
       return;
@@ -300,8 +285,6 @@ function StepCable({
     setInstalling(true);
     try {
       await ipc.wizardInstallCable();
-      // Installer exited cleanly; start the reboot-hint timer and let polling
-      // pick up the new endpoint.
       installFinishedAt.current = Date.now();
       await refreshDevices();
     } catch (e) {
@@ -314,79 +297,58 @@ function StepCable({
   }
 
   return (
-    <Card className="p-5 flex flex-col gap-4">
-      <h2 className="text-base font-semibold text-gray-700">
-        {t("wizard.cable.heading")}
-      </h2>
-      <p className="text-sm text-gray-500">{t("wizard.cable.desc")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.cable.desc")}</p>
 
       {cablePresent ? (
-        <Alert status="success" className="py-2">
-          <AlertTitle className="text-sm">
-            {t("wizard.cable.detected")}
-          </AlertTitle>
-          <AlertDescription className="text-xs">
-            {t("wizard.cable.detectedDesc")}
-          </AlertDescription>
-        </Alert>
+        <Banner
+          tone="ok"
+          title={t("wizard.cable.detected")}
+          description={t("wizard.cable.detectedDesc")}
+        />
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <Chip color="danger" size="sm">
-              {t("wizard.cable.notFound")}
-            </Chip>
-          </div>
+          <span className="inline-flex items-center self-start h-6 px-2.5 rounded-pill bg-danger/10 text-danger text-[11px] font-medium">
+            {t("wizard.cable.notFound")}
+          </span>
 
-          <Button
-            variant="primary"
-            className="self-start"
-            onPress={() => void handleInstall()}
-            isDisabled={installing}
+          <button
+            onClick={() => void handleInstall()}
+            disabled={installing}
+            className="self-start px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 transition-colors inline-flex items-center gap-2"
           >
             {installing ? (
-              <span className="flex items-center gap-2">
+              <>
                 <Spinner size="sm" />
                 {t("wizard.cable.installing")}
-              </span>
+              </>
             ) : (
               t("wizard.cable.installButton")
             )}
-          </Button>
+          </button>
 
           {installing && (
-            <p className="text-xs text-gray-500">
-              {t("wizard.cable.installingHint")}
-            </p>
+            <p className="text-[12px] text-muted">{t("wizard.cable.installingHint")}</p>
           )}
 
           {errKey && (
-            <Alert status="danger" className="py-2 flex flex-col gap-2">
-              <AlertDescription className="text-xs">
-                {t(errKey)}
-              </AlertDescription>
-              {showDownloadFallback && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="self-start"
-                  onPress={() => void openUrl(CABLE_PAGE_URL)}
-                >
-                  {t("wizard.cable.openSite")}
-                </Button>
-              )}
-            </Alert>
+            <Banner
+              tone="danger"
+              description={t(errKey)}
+              action={
+                showDownloadFallback
+                  ? { label: t("wizard.cable.openSite"), onClick: () => void openUrl(CABLE_PAGE_URL) }
+                  : undefined
+              }
+            />
           )}
 
           {showRebootHint && (
-            <Alert status="warning" className="py-2">
-              <AlertDescription className="text-xs">
-                {t("wizard.cable.rebootHint")}
-              </AlertDescription>
-            </Alert>
+            <Banner tone="warn" description={t("wizard.cable.rebootHint")} />
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -414,92 +376,70 @@ function StepDevices({ t }: { t: (k: string) => string }) {
       : (outputDevices.find((d) => d.id === settings.outputId)?.name ?? null);
   const echoWarning = outputName != null && !looksLikeHeadphones(outputName);
 
+  function deviceSelect(
+    value: string | null,
+    onChange: (v: string | null) => void,
+    label: string,
+    options: Array<{ id: string | null; name: string }>
+  ) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] text-muted">{label}</label>
+        <SelectRoot
+          selectedKey={value ?? "__default__"}
+          onSelectionChange={(key) =>
+            onChange(key === "__default__" ? null : String(key))
+          }
+          aria-label={label}
+          onOpenChange={(open) => {
+            if (open) void refreshDevices();
+          }}
+        >
+          <SelectTrigger className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
+            <SelectValue className="flex-1 text-left truncate" />
+            <SelectIndicator />
+          </SelectTrigger>
+          <SelectPopover>
+            <ListBox items={options} className="max-h-72 overflow-y-auto">
+              {(item) => (
+                <ListBoxItem
+                  key={item.id ?? "__default__"}
+                  id={item.id ?? "__default__"}
+                  textValue={item.id == null ? sysDefault : item.name}
+                >
+                  {item.id == null ? sysDefault : item.name}
+                </ListBoxItem>
+              )}
+            </ListBox>
+          </SelectPopover>
+        </SelectRoot>
+      </div>
+    );
+  }
+
   return (
-    <Card className="p-5 flex flex-col gap-5">
-      <h2 className="text-base font-semibold text-gray-700">
-        {t("wizard.devices.heading")}
-      </h2>
-      <p className="text-sm text-gray-500">{t("wizard.devices.desc")}</p>
-
-      {/* Microphone */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm text-gray-600">{t("settings.audio.mic")}</label>
-        <SelectRoot
-          selectedKey={settings.micId ?? "__default__"}
-          onSelectionChange={(key) => {
-            const val = key === "__default__" ? null : String(key);
-            void patchSettings({ micId: val });
-          }}
-          aria-label={t("settings.audio.mic")}
-          onOpenChange={(open) => {
-            if (open) void refreshDevices();
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-            <SelectIndicator />
-          </SelectTrigger>
-          <SelectPopover>
-            <ListBox items={micOptions}>
-              {(item) => (
-                <ListBoxItem
-                  key={item.id ?? "__default__"}
-                  id={item.id ?? "__default__"}
-                  textValue={item.id == null ? sysDefault : item.name}
-                >
-                  {item.id == null ? sysDefault : item.name}
-                </ListBoxItem>
-              )}
-            </ListBox>
-          </SelectPopover>
-        </SelectRoot>
-      </div>
-
-      {/* Output */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm text-gray-600">
-          {t("settings.audio.output")}
-        </label>
-        <SelectRoot
-          selectedKey={settings.outputId ?? "__default__"}
-          onSelectionChange={(key) => {
-            const val = key === "__default__" ? null : String(key);
-            void patchSettings({ outputId: val });
-          }}
-          aria-label={t("settings.audio.output")}
-          onOpenChange={(open) => {
-            if (open) void refreshDevices();
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-            <SelectIndicator />
-          </SelectTrigger>
-          <SelectPopover>
-            <ListBox items={outputOptions}>
-              {(item) => (
-                <ListBoxItem
-                  key={item.id ?? "__default__"}
-                  id={item.id ?? "__default__"}
-                  textValue={item.id == null ? sysDefault : item.name}
-                >
-                  {item.id == null ? sysDefault : item.name}
-                </ListBoxItem>
-              )}
-            </ListBox>
-          </SelectPopover>
-        </SelectRoot>
-      </div>
-
-      {echoWarning && (
-        <Alert status="warning" className="py-2">
-          <AlertTitle className="text-sm">{t("live.alertEcho")}</AlertTitle>
-          <AlertDescription className="text-xs">
-            {t("live.alertEchoDesc")}
-          </AlertDescription>
-        </Alert>
+    <div className="flex flex-col gap-4">
+      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.devices.desc")}</p>
+      {deviceSelect(
+        settings.micId,
+        (v) => void patchSettings({ micId: v }),
+        t("settings.audio.mic"),
+        micOptions
       )}
-    </Card>
+      {deviceSelect(
+        settings.outputId,
+        (v) => void patchSettings({ outputId: v }),
+        t("settings.audio.output"),
+        outputOptions
+      )}
+      {echoWarning && (
+        <Banner
+          tone="warn"
+          title={t("live.alertEcho")}
+          description={t("live.alertEchoDesc")}
+        />
+      )}
+    </div>
   );
 }
 
@@ -530,7 +470,6 @@ function StepTest({
   const isRunning =
     phase === "running" || phase === "connecting" || phase === "reconnecting";
 
-  // Tear down any running test session when leaving the step.
   useEffect(() => {
     return () => {
       void stopLive();
@@ -548,49 +487,49 @@ function StepTest({
     if (phase === "reconnecting") return t("live.sessionReconnecting");
     return t("live.sessionOff");
   }
-  function statusColor(): "success" | "warning" | "default" {
-    if (phase === "running") return "success";
-    if (phase === "connecting" || phase === "reconnecting") return "warning";
-    return "default";
+  function statusTone(): string {
+    if (phase === "running") return "bg-ok/10 text-ok";
+    if (phase === "connecting" || phase === "reconnecting")
+      return "bg-warn/10 text-[#8a5d0a]";
+    return "bg-stone-100 text-muted";
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="p-5 flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-gray-700">
-          {t("wizard.test.heading")}
-        </h2>
-        <p className="text-sm text-gray-600">{t("wizard.test.instruction")}</p>
+      <p className="text-[13px] text-ink leading-relaxed">{t("wizard.test.instruction")}</p>
 
-        <div className="flex items-center gap-3">
-          {isRunning ? (
-            <Button variant="danger" onPress={() => void stopLive()}>
-              {t("wizard.test.stop")}
-            </Button>
-          ) : (
-            <Button variant="primary" onPress={() => void handleStart()}>
-              {t("wizard.test.start")}
-            </Button>
-          )}
-          <Chip color={statusColor()} size="sm">
-            {statusLabel()}
-          </Chip>
-        </div>
+      <div className="flex items-center gap-3">
+        {isRunning ? (
+          <button
+            onClick={() => void stopLive()}
+            className="px-4 h-10 rounded-pill border border-danger/50 text-danger hover:bg-danger/5 text-[13px] font-medium transition-colors"
+          >
+            {t("wizard.test.stop")}
+          </button>
+        ) : (
+          <button
+            onClick={() => void handleStart()}
+            className="px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium transition-colors"
+          >
+            {t("wizard.test.start")}
+          </button>
+        )}
+        <span
+          className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${statusTone()}`}
+        >
+          {statusLabel()}
+        </span>
+      </div>
 
-        {/* Transcript: user sees their own words + the translation. */}
-        <div className="h-48 border border-gray-200 rounded-lg overflow-hidden flex flex-col">
-          <TranscriptFeed lines={transcript} />
-        </div>
-      </Card>
+      <div className="h-48 border border-hairline rounded-card overflow-hidden flex flex-col bg-paper">
+        <TranscriptFeed lines={transcript} />
+      </div>
 
-      {/* Zoom / WhatsApp instruction. */}
-      <Card className="p-5 flex flex-col gap-2 bg-blue-50/50">
-        <h3 className="text-sm font-semibold text-gray-700">
-          {t("wizard.test.zoomHeading")}
-        </h3>
-        <p className="text-sm text-gray-600">{t("wizard.test.zoomBody")}</p>
-        <p className="text-xs text-gray-500">{t("wizard.test.zoomNote")}</p>
-      </Card>
+      <div className="rounded-card border border-hairline bg-cobalt-tint/40 p-4 flex flex-col gap-1.5">
+        <h3 className="text-[13px] font-semibold text-ink">{t("wizard.test.zoomHeading")}</h3>
+        <p className="text-[13px] text-muted leading-relaxed">{t("wizard.test.zoomBody")}</p>
+        <p className="text-[12px] text-muted">{t("wizard.test.zoomNote")}</p>
+      </div>
     </div>
   );
 }

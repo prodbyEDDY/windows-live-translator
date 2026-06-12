@@ -3,6 +3,12 @@ export interface Lang {
   autonym: string;
 }
 
+/** Uppercase ISO-ish short code for a language (e.g. "en" → "EN"). Falls back
+ *  to the upper-cased code when unknown. */
+export function langLabel(code: string): string {
+  return code.toUpperCase();
+}
+
 export const LANGUAGES: Lang[] = [
   { code: "af", autonym: "Afrikaans" },
   { code: "ar", autonym: "العربية" },

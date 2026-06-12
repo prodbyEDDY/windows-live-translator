@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@heroui/react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
+import { IconMic, IconStopSquare, IconDownload } from "../components/Icons";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
 
@@ -79,7 +79,6 @@ export function VoiceScreen() {
       timerRef.current = setInterval(() => {
         setRecordingSecs((s) => {
           if (s + 1 >= MAX_RECORD_SECS) {
-            // Auto-stop at cap
             void handleStopRecording();
             return MAX_RECORD_SECS;
           }
@@ -139,72 +138,84 @@ export function VoiceScreen() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden relative">
+    <div className="flex-1 min-h-0 flex flex-col relative">
       {/* ---- Drop overlay ---- */}
       {isDragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/20 border-4 border-dashed border-blue-400 rounded-lg pointer-events-none">
-          <div className="bg-white rounded-xl px-8 py-6 shadow-xl text-center">
-            <p className="text-2xl mb-2">🎵</p>
-            <p className="text-lg font-semibold text-blue-700">{t("voice.dropOverlay")}</p>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-paper/80 backdrop-blur-[2px] pointer-events-none">
+          <div className="flex flex-col items-center gap-3 rounded-card border-2 border-dashed border-cobalt bg-surface/90 px-12 py-9 shadow-studio">
+            <span className="font-display text-[56px] leading-none text-cobalt">
+              <IconDownload size={56} />
+            </span>
+            <p className="font-display text-[18px] font-semibold text-cobalt-deep">
+              {t("voice.dropOverlay")}
+            </p>
           </div>
         </div>
       )}
 
-      {/* ---- Header ---- */}
-      <div className="flex flex-col gap-3 p-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-800">{t("voice.title")}</h1>
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5">
+        {/* ---- Header row ---- */}
+        <div className="flex items-center justify-between gap-4 shrink-0">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
+            {t("voice.title")}
+          </h1>
 
-          {/* Record / Stop button */}
           <div className="flex items-center gap-3">
             {isRecording && (
-              <div className="flex items-center gap-1.5">
-                <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-sm font-mono tabular-nums text-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[13px] text-ink tabular-nums">
                   {formatRecordingTime(recordingSecs)}
                 </span>
-                <span className="text-xs text-gray-400">{t("voice.recordCap")}</span>
+                <span className="text-[11px] text-muted">{t("voice.recordCap")}</span>
               </div>
             )}
-            {isRecording ? (
-              <Button
-                variant="danger"
-                onPress={() => void handleStopRecording()}
+            {/* Record FAB */}
+            <div className="relative">
+              {isRecording && (
+                <span className="absolute inset-0 rounded-full bg-tangerine/40 lt-ring" />
+              )}
+              <button
+                onClick={() =>
+                  isRecording
+                    ? void handleStopRecording()
+                    : void handleStartRecording()
+                }
+                aria-label={
+                  isRecording ? t("voice.stopButton") : t("voice.recordButton")
+                }
+                className={`relative flex items-center justify-center w-14 h-14 rounded-full text-white shadow-studio transition-colors ${
+                  isRecording
+                    ? "bg-tangerine hover:bg-tangerine-deep"
+                    : "bg-cobalt hover:bg-cobalt-deep"
+                }`}
               >
-                ⏹ {t("voice.stopButton")}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                onPress={() => void handleStartRecording()}
-              >
-                ⏺ {t("voice.recordButton")}
-              </Button>
-            )}
+                {isRecording ? <IconStopSquare size={22} /> : <IconMic size={22} />}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Drop hint when not dragging */}
-        {!isDragOver && (
-          <p className="text-xs text-gray-400 text-center border border-dashed border-gray-200 rounded py-2">
-            {t("voice.dropHint")}
-          </p>
-        )}
-      </div>
+        {/* Drop hint */}
+        <div className="flex items-center justify-center gap-2 rounded-card border border-dashed border-hairline py-2.5 text-[12px] text-muted shrink-0">
+          <IconDownload size={14} />
+          {t("voice.dropHint")}
+        </div>
 
-      {/* ---- Card list ---- */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-        {voiceMessages.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-gray-400 text-sm whitespace-pre-line text-center max-w-xs leading-relaxed">
-              {t("voice.emptyHint")}
-            </p>
-          </div>
-        ) : (
-          voiceMessages.map((msg) => (
-            <VoiceCard key={msg.id} record={msg} />
-          ))
-        )}
+        {/* ---- Card list ---- */}
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 -mx-1 px-1">
+          {voiceMessages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
+              <span className="font-display text-[56px] leading-none text-stone-200">
+                ◎
+              </span>
+              <p className="text-[13px] text-muted whitespace-pre-line max-w-sm leading-relaxed">
+                {t("voice.emptyHint")}
+              </p>
+            </div>
+          ) : (
+            voiceMessages.map((msg) => <VoiceCard key={msg.id} record={msg} />)
+          )}
+        </div>
       </div>
     </div>
   );

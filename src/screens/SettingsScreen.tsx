@@ -1,11 +1,6 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
-  AlertTitle,
-  AlertDescription,
-  Button,
-  Card,
-  Chip,
   ListBox,
   ListBoxItem,
   SelectRoot,
@@ -26,6 +21,9 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
 import { ApiKeyField } from "../components/ApiKeyField";
+import { Banner } from "../components/Banner";
+import { SectionTitle } from "../components/ScreenShell";
+import { IconCheck, IconCross } from "../components/Icons";
 import type { DeviceInfo } from "../lib/ipc";
 import i18next from "../i18n";
 
@@ -36,17 +34,14 @@ export function buildDeviceOptions(
   return [{ id: null, name: "" }, ...devices.map((d) => ({ id: d.id, name: d.name }))];
 }
 
-// Helper to format dB
 export function formatDb(v: number): string {
   return v === 0 ? "0 dB" : `${v} dB`;
 }
 
-// Helper to format percent
 export function formatPercent(v: number): string {
   return `${Math.round(v)}%`;
 }
 
-/** Returns the display name for the currently selected device id */
 function deviceLabel(
   id: string | null,
   devices: DeviceInfo[],
@@ -54,6 +49,99 @@ function deviceLabel(
 ): string {
   if (id == null) return defaultLabel;
   return devices.find((d) => d.id === id)?.name ?? defaultLabel;
+}
+
+/** Settings surface card with an Unbounded section title. */
+function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="bg-surface border border-hairline rounded-card shadow-studio p-5 flex flex-col gap-4">
+      <SectionTitle>{title}</SectionTitle>
+      {children}
+    </section>
+  );
+}
+
+/** Restyled HeroUI Switch — cobalt accent, optional hint. */
+function SettingSwitch({
+  selected,
+  onChange,
+  label,
+  hint,
+  children,
+}: {
+  selected: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Switch
+        isSelected={selected}
+        onChange={onChange}
+        className="group flex items-center gap-3"
+      >
+        <SwitchControl className="data-[selected]:bg-cobalt">
+          <SwitchThumb />
+        </SwitchControl>
+        <SwitchContent className="text-[14px] text-ink">{label}</SwitchContent>
+      </Switch>
+      {hint && <p className="text-[12px] text-muted ml-11">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
+function DeviceSelect({
+  value,
+  onChange,
+  label,
+  options,
+  sysDefault,
+  onOpen,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  label: string;
+  options: Array<{ id: string | null; name: string }>;
+  sysDefault: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[13px] text-muted">{label}</label>
+      <SelectRoot
+        selectedKey={value ?? "__default__"}
+        onSelectionChange={(key) =>
+          onChange(key === "__default__" ? null : String(key))
+        }
+        placeholder={deviceLabel(value, options.filter((o) => o.id) as DeviceInfo[], sysDefault)}
+        aria-label={label}
+        onOpenChange={(open) => {
+          if (open) onOpen();
+        }}
+      >
+        <SelectTrigger className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
+          <SelectValue className="flex-1 text-left truncate" />
+          <SelectIndicator />
+        </SelectTrigger>
+        <SelectPopover>
+          <ListBox items={options} className="max-h-72 overflow-y-auto">
+            {(item) => (
+              <ListBoxItem
+                key={item.id ?? "__default__"}
+                id={item.id ?? "__default__"}
+                textValue={item.id == null ? sysDefault : item.name}
+              >
+                {item.id == null ? sysDefault : item.name}
+              </ListBoxItem>
+            )}
+          </ListBox>
+        </SelectPopover>
+      </SelectRoot>
+    </div>
+  );
 }
 
 export function SettingsScreen() {
@@ -68,8 +156,8 @@ export function SettingsScreen() {
 
   if (!settings) {
     return (
-      <div className="flex-1 p-6 flex items-center justify-center">
-        <span className="text-gray-400">{t("common.loading")}</span>
+      <div className="flex-1 flex items-center justify-center">
+        <span className="text-muted">{t("common.loading")}</span>
       </div>
     );
   }
@@ -77,294 +165,199 @@ export function SettingsScreen() {
   const inputDevices = devices?.inputs ?? [];
   const outputDevices = devices?.outputs ?? [];
   const cablePresent = devices?.cablePresent ?? false;
-
   const micOptions = buildDeviceOptions(inputDevices);
   const outputOptions = buildDeviceOptions(outputDevices);
   const sysDefault = t("settings.audio.systemDefault");
 
-  function handleOpenAiStudio() {
-    void openUrl("https://aistudio.google.com/apikey");
-  }
-
   return (
-    <div className="flex-1 p-6 flex flex-col gap-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-gray-800">{t("screen.settings")}</h1>
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5">
+        <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
+          {t("screen.settings")}
+        </h1>
 
-      {/* Dismissible error alert */}
-      {lastError && (
-        <Alert status="danger" className="flex items-start gap-3">
-          <div className="flex-1">
-            <AlertTitle>{t("common.error")}</AlertTitle>
-            <AlertDescription className="text-sm">{lastError}</AlertDescription>
-          </div>
+        {lastError && (
+          <Banner
+            tone="danger"
+            title={t("common.error")}
+            description={lastError}
+            onDismiss={() => setLastError(null)}
+          />
+        )}
+
+        {/* ---- API key ---- */}
+        <SettingsCard title={t("settings.sections.apiKey")}>
+          <ApiKeyField />
           <button
-            onClick={() => setLastError(null)}
-            className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
-            aria-label={t("common.cancel")}
+            onClick={() => void openUrl("https://aistudio.google.com/apikey")}
+            className="text-[13px] text-cobalt hover:underline self-start"
           >
-            ✕
+            {t("settings.apiKey.getKey")}
           </button>
-        </Alert>
-      )}
+        </SettingsCard>
 
-      {/* ---- Section 1: API key ---- */}
-      <Card className="p-5 flex flex-col gap-4">
-        <h2 className="text-base font-semibold text-gray-700">{t("settings.sections.apiKey")}</h2>
-        <ApiKeyField />
-        <button
-          onClick={handleOpenAiStudio}
-          className="text-sm text-blue-600 hover:underline self-start"
-        >
-          {t("settings.apiKey.getKey")}
-        </button>
-      </Card>
+        {/* ---- Audio ---- */}
+        <SettingsCard title={t("settings.sections.audio")}>
+          <DeviceSelect
+            value={settings.micId}
+            onChange={(v) => void patchSettings({ micId: v })}
+            label={t("settings.audio.mic")}
+            options={micOptions}
+            sysDefault={sysDefault}
+            onOpen={() => void refreshDevices()}
+          />
+          <DeviceSelect
+            value={settings.outputId}
+            onChange={(v) => void patchSettings({ outputId: v })}
+            label={t("settings.audio.output")}
+            options={outputOptions}
+            sysDefault={sysDefault}
+            onOpen={() => void refreshDevices()}
+          />
 
-      {/* ---- Section 2: Audio ---- */}
-      <Card className="p-5 flex flex-col gap-5">
-        <h2 className="text-base font-semibold text-gray-700">{t("settings.sections.audio")}</h2>
-
-        {/* Microphone */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">{t("settings.audio.mic")}</label>
-          <SelectRoot
-            selectedKey={settings.micId ?? "__default__"}
-            onSelectionChange={(key) => {
-              const val = key === "__default__" ? null : String(key);
-              void patchSettings({ micId: val });
-            }}
-            placeholder={deviceLabel(settings.micId, inputDevices, sysDefault)}
-            aria-label={t("settings.audio.mic")}
-            onOpenChange={(open) => {
-              if (open) void refreshDevices();
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-              <SelectIndicator />
-            </SelectTrigger>
-            <SelectPopover>
-              <ListBox items={micOptions}>
-                {(item) => (
-                  <ListBoxItem
-                    key={item.id ?? "__default__"}
-                    id={item.id ?? "__default__"}
-                    textValue={item.id == null ? sysDefault : item.name}
-                  >
-                    {item.id == null ? sysDefault : item.name}
-                  </ListBoxItem>
-                )}
-              </ListBox>
-            </SelectPopover>
-          </SelectRoot>
-        </div>
-
-        {/* Output */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">{t("settings.audio.output")}</label>
-          <SelectRoot
-            selectedKey={settings.outputId ?? "__default__"}
-            onSelectionChange={(key) => {
-              const val = key === "__default__" ? null : String(key);
-              void patchSettings({ outputId: val });
-            }}
-            placeholder={deviceLabel(settings.outputId, outputDevices, sysDefault)}
-            aria-label={t("settings.audio.output")}
-            onOpenChange={(open) => {
-              if (open) void refreshDevices();
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-              <SelectIndicator />
-            </SelectTrigger>
-            <SelectPopover>
-              <ListBox items={outputOptions}>
-                {(item) => (
-                  <ListBoxItem
-                    key={item.id ?? "__default__"}
-                    id={item.id ?? "__default__"}
-                    textValue={item.id == null ? sysDefault : item.name}
-                  >
-                    {item.id == null ? sysDefault : item.name}
-                  </ListBoxItem>
-                )}
-              </ListBox>
-            </SelectPopover>
-          </SelectRoot>
-        </div>
-
-        {/* VB-CABLE status */}
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-gray-600">VB-CABLE</span>
-            <Chip color={cablePresent ? "success" : "danger"} size="sm">
-              {cablePresent
-                ? t("settings.audio.cableInstalled")
-                : t("settings.audio.cableNotFound")}
-            </Chip>
+          <div className="flex items-center justify-between border-t border-hairline mt-1 pt-3">
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${
+                  cablePresent ? "bg-ok/12 text-ok" : "bg-danger/12 text-danger"
+                }`}
+              >
+                {cablePresent ? <IconCheck size={13} /> : <IconCross size={13} />}
+              </span>
+              <span className="text-[13px] text-ink">
+                VB-CABLE ·{" "}
+                <span className="text-muted">
+                  {cablePresent
+                    ? t("settings.audio.cableInstalled")
+                    : t("settings.audio.cableNotFound")}
+                </span>
+              </span>
+            </div>
+            <button
+              onClick={() => setScreen("wizard")}
+              className="px-3.5 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300 transition-colors"
+            >
+              {t("settings.audio.wizardButton")}
+            </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={() => setScreen("wizard")}
-          >
-            {t("settings.audio.wizardButton")}
-          </Button>
-        </div>
-      </Card>
+        </SettingsCard>
 
-      {/* ---- Section 3: Translation ---- */}
-      <Card className="p-5 flex flex-col gap-5">
-        <h2 className="text-base font-semibold text-gray-700">
-          {t("settings.sections.translation")}
-        </h2>
+        {/* ---- Translation ---- */}
+        <SettingsCard title={t("settings.sections.translation")}>
+          <SettingSwitch
+            selected={settings.echoTargetLanguage}
+            onChange={(c) => void patchSettings({ echoTargetLanguage: c })}
+            label={t("settings.translation.echoTargetLanguage")}
+            hint={t("settings.translation.echoTargetLanguageHint")}
+          />
 
-        {/* Echo target language */}
-        <div className="flex flex-col gap-1">
-          <Switch
-            isSelected={settings.echoTargetLanguage}
-            onChange={(checked) => void patchSettings({ echoTargetLanguage: checked })}
+          <SettingSwitch
+            selected={settings.duckingEnabled}
+            onChange={(c) => void patchSettings({ duckingEnabled: c })}
+            label={t("settings.translation.duckingEnabled")}
           >
-            <SwitchControl>
-              <SwitchThumb />
-            </SwitchControl>
-            <SwitchContent>{t("settings.translation.echoTargetLanguage")}</SwitchContent>
-          </Switch>
-          <p className="text-xs text-gray-500 ml-11">
-            {t("settings.translation.echoTargetLanguageHint")}
+            {settings.duckingEnabled && (
+              <div className="ml-11 flex flex-col gap-1">
+                <label className="text-[13px] text-muted">
+                  {t("settings.translation.duckLevel")}: {formatPercent(settings.duckLevel)}
+                </label>
+                <Slider
+                  value={[settings.duckLevel]}
+                  onChange={(vals) =>
+                    void patchSettings({
+                      duckLevel: (Array.isArray(vals) ? vals[0] : vals) as number,
+                    })
+                  }
+                  minValue={0}
+                  maxValue={100}
+                  step={1}
+                  aria-label={t("settings.translation.duckLevel")}
+                >
+                  <SliderTrack>
+                    <SliderFill className="bg-cobalt" />
+                    <SliderThumb />
+                  </SliderTrack>
+                  <SliderOutput />
+                </Slider>
+              </div>
+            )}
+          </SettingSwitch>
+
+          <SettingSwitch
+            selected={settings.mixOriginal}
+            onChange={(c) => void patchSettings({ mixOriginal: c })}
+            label={t("settings.translation.mixOriginal")}
+          >
+            {settings.mixOriginal && (
+              <div className="ml-11 flex flex-col gap-1">
+                <label className="text-[13px] text-muted">
+                  {t("settings.translation.mixGainDb")}: {formatDb(settings.mixGainDb)}
+                </label>
+                <Slider
+                  value={[settings.mixGainDb]}
+                  onChange={(vals) =>
+                    void patchSettings({
+                      mixGainDb: (Array.isArray(vals) ? vals[0] : vals) as number,
+                    })
+                  }
+                  minValue={-24}
+                  maxValue={0}
+                  step={1}
+                  aria-label={t("settings.translation.mixGainDb")}
+                >
+                  <SliderTrack>
+                    <SliderFill className="bg-cobalt" />
+                    <SliderThumb />
+                  </SliderTrack>
+                  <SliderOutput />
+                </Slider>
+              </div>
+            )}
+          </SettingSwitch>
+
+          <SettingSwitch
+            selected={settings.vadEconomy}
+            onChange={(c) => void patchSettings({ vadEconomy: c })}
+            label={t("settings.translation.vadEconomy")}
+            hint={t("settings.translation.vadEconomyHint")}
+          />
+        </SettingsCard>
+
+        {/* ---- App ---- */}
+        <SettingsCard title={t("settings.sections.app")}>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[13px] text-muted">{t("settings.app.uiLang")}</label>
+            <SelectRoot
+              selectedKey={settings.uiLang}
+              onSelectionChange={(key) => {
+                const lang = String(key);
+                void patchSettings({ uiLang: lang });
+                void i18next.changeLanguage(lang);
+              }}
+              aria-label={t("settings.app.uiLang")}
+            >
+              <SelectTrigger className="w-48 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300 transition-colors">
+                <SelectValue className="flex-1 text-left" />
+                <SelectIndicator />
+              </SelectTrigger>
+              <SelectPopover>
+                <ListBox>
+                  <ListBoxItem id="ru" textValue="Русский">
+                    Русский
+                  </ListBoxItem>
+                  <ListBoxItem id="en" textValue="English">
+                    English
+                  </ListBoxItem>
+                </ListBox>
+              </SelectPopover>
+            </SelectRoot>
+          </div>
+
+          <p className="text-[12px] text-muted font-mono">
+            {t("settings.app.version")}: 0.1.0
           </p>
-        </div>
-
-        {/* Ducking */}
-        <div className="flex flex-col gap-3">
-          <Switch
-            isSelected={settings.duckingEnabled}
-            onChange={(checked) => void patchSettings({ duckingEnabled: checked })}
-          >
-            <SwitchControl>
-              <SwitchThumb />
-            </SwitchControl>
-            <SwitchContent>{t("settings.translation.duckingEnabled")}</SwitchContent>
-          </Switch>
-          {settings.duckingEnabled && (
-            <div className="ml-11 flex flex-col gap-1">
-              <label className="text-sm text-gray-600">
-                {t("settings.translation.duckLevel")}:{" "}
-                {formatPercent(settings.duckLevel)}
-              </label>
-              <Slider
-                value={[settings.duckLevel]}
-                onChange={(vals) => {
-                  const v = Array.isArray(vals) ? vals[0] : vals;
-                  void patchSettings({ duckLevel: v as number });
-                }}
-                minValue={0}
-                maxValue={100}
-                step={1}
-                aria-label={t("settings.translation.duckLevel")}
-              >
-                <SliderTrack>
-                  <SliderFill />
-                  <SliderThumb />
-                </SliderTrack>
-                <SliderOutput />
-              </Slider>
-            </div>
-          )}
-        </div>
-
-        {/* Mix original voice under the translation */}
-        <div className="flex flex-col gap-3">
-          <Switch
-            isSelected={settings.mixOriginal}
-            onChange={(checked) => void patchSettings({ mixOriginal: checked })}
-          >
-            <SwitchControl>
-              <SwitchThumb />
-            </SwitchControl>
-            <SwitchContent>{t("settings.translation.mixOriginal")}</SwitchContent>
-          </Switch>
-          {settings.mixOriginal && (
-            <div className="ml-11 flex flex-col gap-1">
-              <label className="text-sm text-gray-600">
-                {t("settings.translation.mixGainDb")}: {formatDb(settings.mixGainDb)}
-              </label>
-              <Slider
-                value={[settings.mixGainDb]}
-                onChange={(vals) => {
-                  const v = Array.isArray(vals) ? vals[0] : vals;
-                  void patchSettings({ mixGainDb: v as number });
-                }}
-                minValue={-24}
-                maxValue={0}
-                step={1}
-                aria-label={t("settings.translation.mixGainDb")}
-              >
-                <SliderTrack>
-                  <SliderFill />
-                  <SliderThumb />
-                </SliderTrack>
-                <SliderOutput />
-              </Slider>
-            </div>
-          )}
-        </div>
-
-        {/* VAD economy: pause streaming on silence */}
-        <div className="flex flex-col gap-1">
-          <Switch
-            isSelected={settings.vadEconomy}
-            onChange={(checked) => void patchSettings({ vadEconomy: checked })}
-          >
-            <SwitchControl>
-              <SwitchThumb />
-            </SwitchControl>
-            <SwitchContent>{t("settings.translation.vadEconomy")}</SwitchContent>
-          </Switch>
-          <p className="text-xs text-gray-500 ml-11">
-            {t("settings.translation.vadEconomyHint")}
-          </p>
-        </div>
-      </Card>
-
-      {/* ---- Section 4: App ---- */}
-      <Card className="p-5 flex flex-col gap-5">
-        <h2 className="text-base font-semibold text-gray-700">{t("settings.sections.app")}</h2>
-
-        {/* UI language */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">{t("settings.app.uiLang")}</label>
-          <SelectRoot
-            selectedKey={settings.uiLang}
-            onSelectionChange={(key) => {
-              const lang = String(key);
-              void patchSettings({ uiLang: lang });
-              void i18next.changeLanguage(lang);
-            }}
-            aria-label={t("settings.app.uiLang")}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-              <SelectIndicator />
-            </SelectTrigger>
-            <SelectPopover>
-              <ListBox>
-                <ListBoxItem id="ru" textValue="Русский">
-                  Русский
-                </ListBoxItem>
-                <ListBoxItem id="en" textValue="English">
-                  English
-                </ListBoxItem>
-              </ListBox>
-            </SelectPopover>
-          </SelectRoot>
-        </div>
-
-        {/* Version */}
-        <p className="text-xs text-gray-400">
-          {t("settings.app.version")}: 0.1.0
-        </p>
-      </Card>
+        </SettingsCard>
+      </div>
     </div>
   );
 }

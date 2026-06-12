@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@heroui/react";
+import { useAppStore } from "../stores/app";
+import { langLabel } from "../lib/languages";
 import type { TranscriptLine } from "../lib/transcript";
 
 interface TranscriptFeedProps {
@@ -35,8 +36,9 @@ export function TranscriptFeed({ lines }: TranscriptFeedProps) {
 
   if (lines.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">
-        {t("live.transcriptEmpty")}
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center select-none px-6">
+        <span className="font-display text-[64px] leading-none text-stone-200">⇄</span>
+        <p className="text-[13px] text-muted max-w-xs">{t("live.transcriptEmpty")}</p>
       </div>
     );
   }
@@ -46,7 +48,7 @@ export function TranscriptFeed({ lines }: TranscriptFeedProps) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto flex flex-col gap-3 p-4"
+        className="absolute inset-0 overflow-y-auto flex flex-col gap-2.5 p-4"
       >
         {lines.map((line) => (
           <TranscriptBubble key={line.id} line={line} />
@@ -56,14 +58,12 @@ export function TranscriptFeed({ lines }: TranscriptFeedProps) {
       {/* Scroll-to-bottom button */}
       {!pinned && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10">
-          <Button
-            size="sm"
-            variant="outline"
-            className="shadow-md bg-white/90 text-gray-700"
-            onPress={scrollToBottom}
+          <button
+            onClick={scrollToBottom}
+            className="px-3.5 h-8 rounded-pill bg-surface border border-hairline shadow-studio text-[12px] text-ink hover:border-stone-300 transition-colors"
           >
             {t("live.scrollDown")}
-          </Button>
+          </button>
         </div>
       )}
     </div>
@@ -71,31 +71,36 @@ export function TranscriptFeed({ lines }: TranscriptFeedProps) {
 }
 
 function TranscriptBubble({ line }: { line: TranscriptLine }) {
+  const { t } = useTranslation();
+  const settings = useAppStore((s) => s.settings);
   const isOut = line.direction === "out";
 
-  return (
-    <div className={`flex flex-col gap-0.5 ${isOut ? "items-end" : "items-start"}`}>
-      <div
-        className={`
-          max-w-[80%] rounded-2xl px-4 py-2.5
-          ${isOut
-            ? "bg-blue-500 text-white rounded-br-sm"
-            : "bg-gray-100 text-gray-900 rounded-bl-sm"
-          }
-        `}
-      >
-        {/* Primary display: translated if available, otherwise original */}
-        <p className="text-sm leading-relaxed">
-          {line.translated || line.original}
-        </p>
+  // Direction routing label: «Вы → EN» / «Собеседник → RU»
+  const targetLang = isOut ? settings?.peerLang : settings?.myLang;
+  const who = isOut ? t("live.sessionOutLabel") : t("live.sessionInLabel");
+  const routeLabel = `${who} → ${targetLang ? langLabel(targetLang) : "—"}`;
 
-        {/* Original shown smaller/muted below translated */}
-        {line.translated && line.original && (
-          <p
-            className={`text-xs mt-1 leading-relaxed ${
-              isOut ? "text-blue-200" : "text-gray-400"
-            }`}
-          >
+  const accent = isOut ? "var(--color-cobalt)" : "var(--color-tangerine)";
+  const bg = isOut ? "bg-cobalt-tint" : "bg-tangerine-tint";
+  const labelColor = isOut ? "text-cobalt-deep" : "text-tangerine-deep";
+
+  const primary = line.translated || line.original;
+  const hasSub = !!(line.translated && line.original);
+
+  return (
+    <div className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
+      <div
+        className={`lt-bubble-in max-w-[72%] rounded-card pl-3.5 pr-4 py-2.5 ${bg}`}
+        style={{ borderLeft: `3px solid ${accent}` }}
+      >
+        <span
+          className={`block text-[10.5px] font-medium uppercase tracking-[0.08em] mb-1 ${labelColor}`}
+        >
+          {routeLabel}
+        </span>
+        <p className="text-[15px] leading-[1.5] text-ink">{primary}</p>
+        {hasSub && (
+          <p className="text-[12.5px] leading-[1.45] text-muted mt-1">
             {line.original}
           </p>
         )}

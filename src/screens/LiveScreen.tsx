@@ -1,11 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  Chip,
   ListBox,
   ListBoxItem,
   SelectRoot,
@@ -18,35 +13,15 @@ import {
   TooltipTrigger,
 } from "@heroui/react";
 import { useAppStore } from "../stores/app";
-import { LanguagePair } from "../components/LanguagePair";
-import { LevelMeter } from "../components/LevelMeter";
+import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
-import { canStart } from "../lib/liveStart";
+import { Banner } from "../components/Banner";
 import { looksLikeHeadphones } from "../lib/echo";
-import { ipc } from "../lib/ipc";
-import { shouldSaveCall } from "../lib/history";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function sessionColor(
-  session: string
-): "success" | "warning" | "danger" | "default" {
-  if (session === "running") return "success";
-  if (session === "connecting" || session === "reconnecting") return "warning";
-  if (session === "off") return "default";
-  return "danger"; // error strings
-}
-
-function sessionLabel(session: string, t: (k: string) => string): string {
-  if (session === "off") return t("live.sessionOff");
-  if (session === "connecting") return t("live.sessionConnecting");
-  if (session === "running") return t("live.sessionRunning");
-  if (session === "reconnecting") return t("live.sessionReconnecting");
-  return session; // error message passthrough
 }
 
 export function LiveScreen() {
@@ -61,93 +36,19 @@ export function LiveScreen() {
   const levels = useAppStore((s) => s.levels);
   const cost = useAppStore((s) => s.cost);
   const lastError = useAppStore((s) => s.lastError);
-  const startLive = useAppStore((s) => s.startLive);
-  const stopLive = useAppStore((s) => s.stopLive);
+  const durationSec = useAppStore((s) => s.durationSec);
+  const appPid = useAppStore((s) => s.appPid);
+  const setAppPid = useAppStore((s) => s.setAppPid);
   const refreshApps = useAppStore((s) => s.refreshApps);
   const clearTranscript = useAppStore((s) => s.clearTranscript);
   const setScreen = useAppStore((s) => s.setScreen);
   const setLastError = useAppStore((s) => s.setLastError);
 
-  // Local state: selected app pid for "app" capture mode
-  const [appPid, setAppPid] = useState<number | null>(null);
   // Dismissable echo warning
   const [echoDismissed, setEchoDismissed] = useState(false);
-  // Session duration timer
-  const [durationSec, setDurationSec] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const captureMode = settings?.captureMode ?? "system";
   const cablePresent = devices?.cablePresent ?? false;
-
-  // Determine current phase
-  const phase = liveState?.phase ?? "off";
-  const isRunning = phase === "running" || phase === "connecting" || phase === "reconnecting";
-
-  // Start/stop timer when phase changes
-  useEffect(() => {
-    if (phase === "running") {
-      if (!timerRef.current) {
-        timerRef.current = setInterval(() => {
-          setDurationSec((s) => s + 1);
-        }, 1000);
-      }
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (phase === "off") {
-        setDurationSec(0);
-      }
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [phase]);
-
-  const startResult = canStart(keyStatus, captureMode, appPid, cablePresent);
-
-  async function handleStart() {
-    if (!settings) return;
-    clearTranscript();
-    const cfg = {
-      myLang: settings.myLang,
-      peerLang: settings.peerLang,
-      micId: settings.micId,
-      outputId: settings.outputId,
-      captureMode: settings.captureMode,
-      appPid: captureMode === "app" ? appPid : null,
-      echoTargetLanguage: settings.echoTargetLanguage,
-      duckingEnabled: settings.duckingEnabled,
-      duckLevel: settings.duckLevel,
-      mixOriginal: settings.mixOriginal,
-      mixGainDb: settings.mixGainDb,
-      vadEconomy: settings.vadEconomy,
-      testMode: false,
-    };
-    await startLive(cfg);
-  }
-
-  async function handleStop() {
-    // Save transcript before stopping (only if there is meaningful content).
-    // A crashed/interrupted call loses its transcript — acceptable v1 behaviour.
-    if (settings && shouldSaveCall(transcript)) {
-      try {
-        await ipc.historySaveCall(
-          settings.myLang,
-          settings.peerLang,
-          durationSec,
-          JSON.stringify(transcript)
-        );
-      } catch {
-        // Non-fatal: losing the history record is preferable to blocking stop
-      }
-    }
-    await stopLive();
-  }
 
   // Echo warning: check if output device name looks like headphones
   const outputDeviceName = (() => {
@@ -168,272 +69,182 @@ export function LiveScreen() {
     if (err === "no_app_selected") return t("live.error.noAppSelected");
     return err;
   }
-
   const displayedError = translateError(lastError);
 
-  // Build app list items: "системный звук" + each app
+  // Build app list items
   const systemAudioLabel = t("live.systemAudio");
   const APP_SYSTEM_KEY = "__system__";
 
   if (!settings) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+      <div className="flex-1 flex items-center justify-center text-muted text-sm">
         {t("common.loading")}
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* ---- Header ---- */}
-      <div className="flex flex-col gap-3 p-4 border-b border-gray-200 bg-white">
-        {/* Language pair */}
-        <LanguagePair />
-
-        {/* Source selector + Start/Stop */}
-        <div className="flex items-end gap-3">
-          {/* App source selector */}
-          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-            <label className="text-xs text-gray-500">{t("live.audioSource")}</label>
-            <SelectRoot
-              // app-mode without a chosen pid must NOT display "system" — that
-              // desyncs the visible value from canStart's verdict. null shows
-              // the placeholder so the control and the hint agree.
-              selectedKey={captureMode === "system" ? APP_SYSTEM_KEY : (appPid != null ? String(appPid) : null)}
-              placeholder={t("live.pickAppPlaceholder")}
-              onSelectionChange={(key) => {
-                if (key === APP_SYSTEM_KEY) {
-                  void useAppStore.getState().patchSettings({ captureMode: "system" });
-                  setAppPid(null);
-                } else {
-                  const pid = Number(key);
-                  void useAppStore.getState().patchSettings({ captureMode: "app" });
-                  setAppPid(pid);
-                }
-              }}
-              aria-label={t("live.audioSource")}
-              onOpenChange={(open) => {
-                if (open) void refreshApps();
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-                <SelectIndicator />
-              </SelectTrigger>
-              <SelectPopover>
-                <ListBox>
-                  <ListBoxItem
-                    key={APP_SYSTEM_KEY}
-                    id={APP_SYSTEM_KEY}
-                    textValue={systemAudioLabel}
-                  >
-                    {systemAudioLabel}
-                  </ListBoxItem>
-                  {apps.map((app) => (
-                    <ListBoxItem
-                      key={String(app.pid)}
-                      id={String(app.pid)}
-                      textValue={`${app.name} (${app.pid})`}
-                    >
-                      {app.active ? "🔊 " : ""}{app.name} ({app.pid})
-                    </ListBoxItem>
-                  ))}
-                </ListBox>
-              </SelectPopover>
-            </SelectRoot>
-          </div>
-
-          {/* Start / Stop button */}
-          <div className="flex flex-col items-end gap-1">
-            {isRunning ? (
-              <Button
-                variant="danger"
-                className="min-w-24"
-                onPress={() => void handleStop()}
-              >
-                {t("common.stop")}
-              </Button>
-            ) : startResult.ok ? (
-              <Button
-                variant="primary"
-                className="min-w-24"
-                onPress={() => void handleStart()}
-              >
-                {t("common.start")}
-              </Button>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="outline"
-                    isDisabled
-                    className="min-w-24"
-                  >
-                    {t("common.start")}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {startResult.reason ? t(startResult.reason) : ""}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {/* Hint text under button */}
-            {!isRunning && !startResult.ok && startResult.reason && (
-              <span className="text-xs text-orange-500">
-                {t(startResult.reason)}
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* Centered content column */}
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-5 pb-0 flex flex-col gap-3">
+        {/* ---- Toolbar: source picker ---- */}
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted shrink-0">
+            {t("live.audioSource")}
+          </span>
+          <SelectRoot
+            selectedKey={
+              captureMode === "system"
+                ? APP_SYSTEM_KEY
+                : appPid != null
+                  ? String(appPid)
+                  : null
+            }
+            placeholder={t("live.pickAppPlaceholder")}
+            onSelectionChange={(key) => {
+              if (key === APP_SYSTEM_KEY) {
+                void useAppStore.getState().patchSettings({ captureMode: "system" });
+                setAppPid(null);
+              } else {
+                const pid = Number(key);
+                void useAppStore.getState().patchSettings({ captureMode: "app" });
+                setAppPid(pid);
+              }
+            }}
+            aria-label={t("live.audioSource")}
+            onOpenChange={(open) => {
+              if (open) void refreshApps();
+            }}
+          >
+            <SelectTrigger className="min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-3 pr-3.5 rounded-pill border border-hairline bg-surface text-[13px] text-ink hover:border-stone-300 transition-colors">
+              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md bg-cobalt-tint text-cobalt text-[11px]">
+                ♪
               </span>
+              <SelectValue className="flex-1 min-w-0 text-left truncate" />
+              <SelectIndicator className="shrink-0" />
+            </SelectTrigger>
+            <SelectPopover>
+              <ListBox className="max-h-72 overflow-y-auto">
+                <ListBoxItem
+                  key={APP_SYSTEM_KEY}
+                  id={APP_SYSTEM_KEY}
+                  textValue={systemAudioLabel}
+                >
+                  {systemAudioLabel}
+                </ListBoxItem>
+                {apps.map((app) => (
+                  <ListBoxItem
+                    key={String(app.pid)}
+                    id={String(app.pid)}
+                    textValue={`${app.name} (${app.pid})`}
+                  >
+                    {app.active ? "🔊 " : ""}
+                    {app.name}{" "}
+                    <span className="font-mono text-muted">({app.pid})</span>
+                  </ListBoxItem>
+                ))}
+              </ListBox>
+            </SelectPopover>
+          </SelectRoot>
+        </div>
+
+        {/* ---- Banners ---- */}
+        {(keyStatus?.state !== "valid" ||
+          !cablePresent ||
+          showEchoWarning ||
+          displayedError) && (
+          <div className="flex flex-col gap-2 shrink-0">
+            {keyStatus && keyStatus.state !== "valid" && (
+              <Banner
+                tone="warn"
+                title={t("live.alertNoKey")}
+                description={t("live.alertNoKeyDesc")}
+                action={{ label: t("live.alertGoSettings"), onClick: () => setScreen("settings") }}
+              />
+            )}
+            {!cablePresent && (
+              <Banner
+                tone="danger"
+                title={t("live.alertNoCable")}
+                description={t("live.alertNoCableDesc")}
+                action={{ label: t("settings.audio.wizardButton"), onClick: () => setScreen("wizard") }}
+              />
+            )}
+            {showEchoWarning && (
+              <Banner
+                tone="warn"
+                title={t("live.alertEcho")}
+                description={t("live.alertEchoDesc")}
+                onDismiss={() => setEchoDismissed(true)}
+              />
+            )}
+            {displayedError && (
+              <Banner
+                tone="danger"
+                title={t("common.error")}
+                description={displayedError}
+                onDismiss={() => setLastError(null)}
+              />
             )}
           </div>
-        </div>
+        )}
 
-        {/* Warning banners */}
-        <div className="flex flex-col gap-2">
-          {/* API key missing/invalid */}
-          {keyStatus && keyStatus.state !== "valid" && (
-            <Alert status="warning" className="flex items-start gap-3 py-2">
-              <div className="flex-1">
-                <AlertTitle className="text-sm">{t("live.alertNoKey")}</AlertTitle>
-                <AlertDescription className="text-xs">
-                  {t("live.alertNoKeyDesc")}
-                </AlertDescription>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="flex-shrink-0"
-                onPress={() => setScreen("settings")}
-              >
-                {t("live.alertGoSettings")}
-              </Button>
-            </Alert>
-          )}
-
-          {/* VB-Cable not present */}
-          {!cablePresent && (
-            <Alert status="danger" className="flex items-start gap-3 py-2">
-              <div className="flex-1">
-                <AlertTitle className="text-sm">{t("live.alertNoCable")}</AlertTitle>
-                <AlertDescription className="text-xs">
-                  {t("live.alertNoCableDesc")}
-                </AlertDescription>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="flex-shrink-0"
-                onPress={() => setScreen("wizard")}
-              >
-                {t("settings.audio.wizardButton")}
-              </Button>
-            </Alert>
-          )}
-
-          {/* Echo warning */}
-          {showEchoWarning && (
-            <Alert status="warning" className="flex items-start gap-3 py-2">
-              <div className="flex-1">
-                <AlertTitle className="text-sm">{t("live.alertEcho")}</AlertTitle>
-                <AlertDescription className="text-xs">
-                  {t("live.alertEchoDesc")}
-                </AlertDescription>
-              </div>
+        {/* ---- Transcript card (fills) ---- */}
+        <div className="relative flex-1 min-h-0 bg-surface border border-hairline rounded-card shadow-studio overflow-hidden flex flex-col">
+          <TranscriptFeed lines={transcript} />
+          {transcript.length > 0 && (
+            <div className="absolute top-2.5 right-2.5 z-10">
               <button
-                onClick={() => setEchoDismissed(true)}
-                className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0 text-sm"
-                aria-label={t("common.cancel")}
+                onClick={clearTranscript}
+                className="px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100 transition-colors"
               >
-                ✕
+                {t("live.clearTranscript")}
               </button>
-            </Alert>
-          )}
-
-          {/* Start/runtime error */}
-          {displayedError && (
-            <Alert status="danger" className="flex items-start gap-3 py-2">
-              <div className="flex-1">
-                <AlertTitle className="text-sm">{t("common.error")}</AlertTitle>
-                <AlertDescription className="text-xs">{displayedError}</AlertDescription>
-              </div>
-              <button
-                onClick={() => setLastError(null)}
-                className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0 text-sm"
-                aria-label={t("common.cancel")}
-              >
-                ✕
-              </button>
-            </Alert>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ---- Body: TranscriptFeed + clear button ---- */}
-      <div className="flex-1 flex flex-col min-h-0 relative">
-        <TranscriptFeed lines={transcript} />
-
-        {/* Clear transcript button */}
-        {transcript.length > 0 && (
-          <div className="absolute top-2 right-2 z-10">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-xs text-gray-400 hover:text-gray-600"
-              onPress={clearTranscript}
-            >
-              {t("live.clearTranscript")}
-            </Button>
+      {/* ---- Status strip ---- */}
+      <div className="shrink-0 border-t border-hairline bg-surface">
+        <div className="w-full max-w-[920px] mx-auto px-6 py-2.5 flex items-center gap-4 flex-wrap">
+          {/* Direction chips */}
+          <div className="flex items-center gap-2">
+            <DirectionChip
+              session={liveState?.outSession ?? "off"}
+              tone="out"
+              label={t("live.sessionOut")}
+            />
+            <DirectionChip
+              session={liveState?.inSession ?? "off"}
+              tone="in"
+              label={t("live.sessionIn")}
+            />
           </div>
-        )}
-      </div>
 
-      {/* ---- Status bar ---- */}
-      <div className="flex items-center gap-3 px-4 py-2 border-t border-gray-200 bg-gray-50 flex-wrap">
-        {/* Session chips */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-500">{t("live.sessionOut")}:</span>
-          <SessionChip
-            session={liveState?.outSession ?? "off"}
-            reconnecting={liveState?.outSession === "reconnecting"}
-            t={t}
-          />
+          {/* Meters */}
+          <div className="flex flex-col gap-1 ml-2">
+            <DirectionMeter db={levels?.micDb ?? -60} tone="out" label={t("live.levelMic")} />
+            <DirectionMeter db={levels?.appDb ?? -60} tone="in" label={t("live.levelApp")} />
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Timer + cost */}
+          <span className="font-mono text-[12px] text-ink tabular-nums">
+            {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
+          </span>
+          {cost != null && (
+            <Tooltip>
+              <TooltipTrigger>
+                <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
+                  ~${cost.estimatedUsd.toFixed(2)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("live.costTooltip")}</TooltipContent>
+            </Tooltip>
+          )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-500">{t("live.sessionIn")}:</span>
-          <SessionChip
-            session={liveState?.inSession ?? "off"}
-            reconnecting={liveState?.inSession === "reconnecting"}
-            t={t}
-          />
-        </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Level meters */}
-        <div className="flex flex-col gap-1 min-w-32">
-          <LevelMeter
-            db={levels?.micDb ?? -60}
-            label={t("live.levelMic")}
-          />
-          <LevelMeter
-            db={levels?.appDb ?? -60}
-            label={t("live.levelApp")}
-          />
-        </div>
-
-        {/* Duration + cost */}
-        <span className="text-xs font-mono text-gray-500 tabular-nums min-w-10 text-right">
-          {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
-        </span>
-        {cost != null && (
-          <Tooltip>
-            <TooltipTrigger>
-              <Chip size="sm" color="default" className="text-xs font-mono">
-                ~${cost.estimatedUsd.toFixed(2)}
-              </Chip>
-            </TooltipTrigger>
-            <TooltipContent>{t("live.costTooltip")}</TooltipContent>
-          </Tooltip>
-        )}
       </div>
     </div>
   );
@@ -441,29 +252,42 @@ export function LiveScreen() {
 
 // ----------- Sub-components -----------
 
-interface SessionChipProps {
+function DirectionChip({
+  session,
+  tone,
+  label,
+}: {
   session: string;
-  reconnecting: boolean;
-  t: (k: string) => string;
-}
+  tone: "out" | "in";
+  label: string;
+}) {
+  const isOff = session === "off";
+  const isRunning = session === "running";
+  const isReconnecting = session === "reconnecting" || session === "connecting";
+  const isError = !isOff && !isRunning && !isReconnecting;
 
-function SessionChip({ session, reconnecting, t }: SessionChipProps) {
-  const color = sessionColor(session);
-  const label = sessionLabel(session, t);
-  const isError =
-    session !== "off" &&
-    session !== "connecting" &&
-    session !== "running" &&
-    session !== "reconnecting";
+  const accentBg = tone === "out" ? "bg-cobalt" : "bg-tangerine";
+  const accentText = tone === "out" ? "text-cobalt-deep" : "text-tangerine-deep";
+  const accentBorder = tone === "out" ? "border-cobalt/50" : "border-tangerine/50";
+  const accentTint = tone === "out" ? "bg-cobalt-tint" : "bg-tangerine-tint";
+
+  let cls: string;
+  if (isRunning) {
+    cls = `${accentBg} text-white`;
+  } else if (isReconnecting) {
+    cls = `border ${accentBorder} ${accentText} ${accentTint} lt-pulse-dot`;
+  } else if (isError) {
+    cls = "border border-danger/50 text-danger bg-danger/5";
+  } else {
+    cls = "border border-hairline text-muted bg-stone-50";
+  }
 
   const chip = (
-    <Chip
-      color={color}
-      size="sm"
-      className={reconnecting ? "animate-pulse" : undefined}
+    <span
+      className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${cls}`}
     >
       {label}
-    </Chip>
+    </span>
   );
 
   if (isError) {
@@ -474,6 +298,5 @@ function SessionChip({ session, reconnecting, t }: SessionChipProps) {
       </Tooltip>
     );
   }
-
   return chip;
 }

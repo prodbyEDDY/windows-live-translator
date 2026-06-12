@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  Card,
-  Chip,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@heroui/react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@heroui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { resolveResource } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ipc, type VoiceRecord } from "../lib/ipc";
+import { IconGrip, IconDownload } from "./Icons";
 
-// Bundled drag thumbnail (64x64 PNG). Declared in tauri.conf.json
-// `bundle.resources`; resolved to a filesystem path at runtime because the
-// drag plugin needs a real path, not an asset URL. Resolved once and cached at
-// module scope so every card shares the single lookup.
+// Bundled drag thumbnail — resolved once and cached at module scope.
 let dragIconPromise: Promise<string | null> | null = null;
 function getDragIconPath(): Promise<string | null> {
   if (!dragIconPromise) {
@@ -28,16 +19,6 @@ function getDragIconPath(): Promise<string | null> {
 
 interface VoiceCardProps {
   record: VoiceRecord;
-}
-
-type StageColor = "default" | "success" | "danger" | "warning";
-
-function stageColor(stage: string): StageColor {
-  if (stage === "done") return "success";
-  if (stage.startsWith("error")) return "danger";
-  if (stage === "pending" || stage === "transcribing" || stage === "synthesizing")
-    return "default";
-  return "default";
 }
 
 function stageIsProcessing(stage: string): boolean {
@@ -54,8 +35,6 @@ export function VoiceCard({ record }: VoiceCardProps) {
   const { t } = useTranslation();
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
-  // Filesystem path to the bundled drag thumbnail, resolved lazily. Falls back
-  // to `null` (then to the audio path) if the resource cannot be resolved.
   const dragIconRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -68,9 +47,10 @@ export function VoiceCard({ record }: VoiceCardProps) {
     };
   }, []);
 
-  const kindIcon = record.kind === "in" ? "📥" : "📤";
-  const kindLabel =
-    record.kind === "in" ? t("voice.kindIn") : t("voice.kindOut");
+  // «Собеседник» (in) = tangerine, «Вы» (out) = cobalt.
+  const isIn = record.kind === "in";
+  const accent = isIn ? "var(--color-tangerine)" : "var(--color-cobalt)";
+  const kindLabel = isIn ? t("voice.kindIn") : t("voice.kindOut");
 
   const createdAt = new Date(record.createdAt).toLocaleTimeString(undefined, {
     hour: "2-digit",
@@ -105,7 +85,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
         setTimeout(() => setCopiedTranslation(false), 1500);
       }
     } catch {
-      // clipboard access failed silently
+      /* clipboard access failed silently */
     }
   }
 
@@ -113,7 +93,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
     try {
       await ipc.voiceRetry(record.id);
     } catch {
-      // error surfaces via voice:progress event
+      /* error surfaces via voice:progress event */
     }
   }
 
@@ -128,7 +108,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
       try {
         await ipc.voiceExport(record.id, dest);
       } catch {
-        // error surfaces via store lastError
+        /* error surfaces via store lastError */
       }
     }
   }
@@ -136,104 +116,109 @@ export function VoiceCard({ record }: VoiceCardProps) {
   async function handleDragOut() {
     if (!record.translatedAudioPath) return;
     try {
-      // The drag plugin requires an `icon` filesystem path. Prefer the bundled
-      // 64x64 thumbnail (resolved via resolveResource); if resolution failed
-      // (e.g. resource missing), fall back to the audio file path itself so the
-      // drag still proceeds — only the preview thumbnail is lost.
       const icon = dragIconRef.current ?? record.translatedAudioPath;
-      await startDrag({
-        item: [record.translatedAudioPath],
-        icon,
-      });
+      await startDrag({ item: [record.translatedAudioPath], icon });
     } catch {
-      // drag cancelled — silent
+      /* drag cancelled — silent */
     }
   }
 
-  const sourceUrl =
-    record.sourcePath ? convertFileSrc(record.sourcePath) : null;
-  const translatedUrl =
-    record.translatedAudioPath
-      ? convertFileSrc(record.translatedAudioPath)
-      : null;
+  const sourceUrl = record.sourcePath ? convertFileSrc(record.sourcePath) : null;
+  const translatedUrl = record.translatedAudioPath
+    ? convertFileSrc(record.translatedAudioPath)
+    : null;
+
+  // Stage pill tone
+  const stagePill = errMsg
+    ? "bg-danger/10 text-danger"
+    : isDone
+      ? "bg-ok/10 text-ok"
+      : "bg-stone-100 text-muted";
 
   return (
-    <Card className="p-4 flex flex-col gap-3">
+    <div
+      className="relative bg-surface border border-hairline rounded-card shadow-studio p-4 pl-5 flex flex-col gap-3 overflow-hidden"
+    >
+      <span
+        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        style={{ background: accent }}
+      />
+
       {/* ---- Header ---- */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-base">{kindIcon}</span>
-        <span className="text-sm font-medium text-gray-700">{kindLabel}</span>
-        <span className="text-xs text-gray-400">{createdAt}</span>
-        <div className="ml-auto flex items-center gap-1">
+        <span
+          className="text-[13px] font-semibold"
+          style={{ color: accent }}
+        >
+          {kindLabel}
+        </span>
+        <span className="font-mono text-[11px] text-muted">{createdAt}</span>
+        <div className="ml-auto flex items-center gap-2">
           {errMsg ? (
             <Tooltip>
               <TooltipTrigger>
-                <Chip
-                  color={stageColor(record.stage)}
-                  size="sm"
-                  className={isProcessing ? "animate-pulse" : undefined}
+                <span
+                  className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${stagePill} ${isProcessing ? "lt-pulse-dot" : ""}`}
                 >
                   {stageName}
-                </Chip>
+                </span>
               </TooltipTrigger>
               <TooltipContent>{errMsg}</TooltipContent>
             </Tooltip>
           ) : (
-            <Chip
-              color={stageColor(record.stage)}
-              size="sm"
-              className={isProcessing ? "animate-pulse" : undefined}
+            <span
+              className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${stagePill} ${isProcessing ? "lt-pulse-dot" : ""}`}
             >
               {stageName}
-            </Chip>
+            </span>
           )}
           {errMsg && (
-            <Button
-              size="sm"
-              variant="outline"
-              onPress={() => void handleRetry()}
+            <button
+              onClick={() => void handleRetry()}
+              className="px-3 h-6 rounded-pill text-[11px] font-medium border border-hairline text-ink hover:border-stone-300 transition-colors"
             >
               {t("voice.retry")}
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
-      {/* ---- Transcript / Translation ---- */}
+      {/* ---- Transcript ---- */}
       {record.transcript && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
               {t("voice.originalLabel")}
-              {record.sourceLang ? ` [${record.sourceLang}]` : ""}
+              {record.sourceLang ? ` · ${record.sourceLang.toUpperCase()}` : ""}
             </span>
             <button
               onClick={() => void handleCopy(record.transcript!, "original")}
-              className="text-xs text-blue-500 hover:underline ml-auto"
+              className="text-[11px] text-cobalt hover:underline ml-auto"
               aria-label={t("voice.copyOriginal")}
             >
               {copiedOriginal ? t("voice.copied") : "⎘"}
             </button>
           </div>
-          <p className="text-sm text-gray-500 leading-relaxed">{record.transcript}</p>
+          <p className="text-[13px] text-muted leading-relaxed">{record.transcript}</p>
         </div>
       )}
 
+      {/* ---- Translation ---- */}
       {record.translation && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-700 font-medium">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink">
               {t("voice.translationLabel")}
             </span>
             <button
               onClick={() => void handleCopy(record.translation!, "translation")}
-              className="text-xs text-blue-500 hover:underline ml-auto"
+              className="text-[11px] text-cobalt hover:underline ml-auto"
               aria-label={t("voice.copyTranslation")}
             >
               {copiedTranslation ? t("voice.copied") : "⎘"}
             </button>
           </div>
-          <p className="text-sm text-gray-900 leading-relaxed font-medium">
+          <p className="text-[14px] text-ink leading-relaxed font-medium">
             {record.translation}
           </p>
         </div>
@@ -242,27 +227,23 @@ export function VoiceCard({ record }: VoiceCardProps) {
       {/* ---- Audio players ---- */}
       {sourceUrl && (
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-400">
-            {record.kind === "in" ? t("voice.kindIn") : t("voice.kindOut")}
-          </span>
-          <audio controls src={sourceUrl} className="w-full h-8" />
+          <span className="text-[11px] text-muted">{kindLabel}</span>
+          <audio controls src={sourceUrl} className="w-full max-w-md h-9" />
         </div>
       )}
-
       {translatedUrl && (
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-400">{t("voice.translationLabel")}</span>
-          <audio controls src={translatedUrl} className="w-full h-8" />
+          <span className="text-[11px] text-muted">{t("voice.translationLabel")}</span>
+          <audio controls src={translatedUrl} className="w-full max-w-md h-9" />
         </div>
       )}
 
       {/* ---- Out + done: drag handle + save ---- */}
       {record.kind === "out" && isDone && record.translatedAudioPath && (
-        <div className="flex flex-col gap-1 pt-1 border-t border-gray-100">
+        <div className="flex flex-col gap-1.5 pt-2 border-t border-hairline">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Drag handle */}
             <div
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-dashed border-gray-300 text-sm text-gray-600 cursor-grab hover:border-blue-400 hover:text-blue-600 select-none"
+              className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-pill border border-dashed border-stone-300 text-[12px] text-muted cursor-grab hover:text-cobalt hover:border-cobalt/50 hover:-translate-y-px hover:shadow-studio transition-all select-none"
               onMouseDown={() => void handleDragOut()}
               onDragStart={(e) => {
                 e.preventDefault();
@@ -270,22 +251,20 @@ export function VoiceCard({ record }: VoiceCardProps) {
               }}
               title={t("voice.dragHandle")}
             >
-              <span className="text-base leading-none">⠿</span>
+              <IconGrip size={15} />
               <span>{t("voice.dragHandle").replace("⠿ ", "")}</span>
             </div>
-
-            {/* Save As */}
-            <Button
-              size="sm"
-              variant="outline"
-              onPress={() => void handleSaveAs()}
+            <button
+              onClick={() => void handleSaveAs()}
+              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300 transition-colors"
             >
+              <IconDownload size={14} />
               {t("voice.saveAs")}
-            </Button>
+            </button>
           </div>
-          <p className="text-xs text-gray-400 italic">{t("voice.dragDisclaimer")}</p>
+          <p className="text-[11px] text-muted italic">{t("voice.dragDisclaimer")}</p>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

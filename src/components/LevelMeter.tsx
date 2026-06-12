@@ -10,19 +10,27 @@ export function dbToPercent(db: number): number {
   return ((clamped - DB_MIN) / (DB_MAX - DB_MIN)) * 100;
 }
 
-interface LevelMeterProps {
+interface DirectionMeterProps {
   db: number;
+  /** "out" = cobalt (you), "in" = tangerine (peer). */
+  tone: "out" | "in";
   label: string;
 }
 
-export function LevelMeter({ db, label }: LevelMeterProps) {
+/**
+ * Compact 24-segment level meter rendered as a single rounded bar that fills by
+ * width in the direction color. Used in the Live status strip.
+ */
+export function DirectionMeter({ db, tone, label }: DirectionMeterProps) {
   const pct = dbToPercent(db);
-
+  const color = tone === "out" ? "var(--color-cobalt)" : "var(--color-tangerine)";
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <span className="text-xs text-gray-500 flex-shrink-0 w-7">{label}</span>
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-[10.5px] font-medium text-muted w-9 shrink-0 truncate">
+        {label}
+      </span>
       <div
-        className="flex-1 h-2 rounded-full bg-gray-200 overflow-hidden"
+        className="relative h-[3px] w-24 rounded-pill bg-stone-200 overflow-hidden"
         role="meter"
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
@@ -30,21 +38,10 @@ export function LevelMeter({ db, label }: LevelMeterProps) {
         aria-label={label}
       >
         <div
-          className="h-full rounded-full transition-all duration-75"
-          style={{
-            width: `${pct}%`,
-            background:
-              pct < 60
-                ? "#22c55e"
-                : pct < 80
-                ? "#eab308"
-                : "#ef4444",
-          }}
+          className="absolute inset-y-0 left-0 rounded-pill transition-[width] duration-100 ease-out"
+          style={{ width: `${pct}%`, background: color }}
         />
       </div>
-      <span className="text-xs text-gray-400 flex-shrink-0 w-10 text-right tabular-nums">
-        {db <= DB_MIN ? `≤${DB_MIN}` : db === DB_MAX ? "0"  : db.toFixed(0)} dB
-      </span>
     </div>
   );
 }

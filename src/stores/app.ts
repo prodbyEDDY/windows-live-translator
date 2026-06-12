@@ -13,6 +13,7 @@ import {
   type VoiceRecord,
 } from "../lib/ipc";
 import { appendTranscript, type TranscriptLine } from "../lib/transcript";
+import { shouldSaveCall } from "../lib/history";
 
 export type Screen = "live" | "voice" | "history" | "settings" | "wizard";
 
@@ -28,6 +29,11 @@ interface AppState {
   screen: Screen;
   lastError: string | null;
   voiceMessages: VoiceRecord[];
+  /** Selected app pid for "app" capture mode (lifted from LiveScreen so the
+   *  header Start button can drive the session). */
+  appPid: number | null;
+  /** Session duration timer (seconds), driven by the live phase. */
+  durationSec: number;
 
   init: () => Promise<void>;
   patchSettings: (p: Partial<Settings>) => Promise<void>;
@@ -36,8 +42,14 @@ interface AppState {
   setScreen: (screen: Screen) => void;
   setKeyStatus: (ks: KeyStatus) => void;
   setLastError: (err: string | null) => void;
+  setAppPid: (pid: number | null) => void;
+  setDurationSec: (s: number | ((prev: number) => number)) => void;
   startLive: (cfg: LiveConfig) => Promise<void>;
   stopLive: () => Promise<void>;
+  /** High-level start: clears transcript and starts from current settings + appPid. */
+  startLiveSession: () => Promise<void>;
+  /** High-level stop: persists the call to history (if meaningful) then stops. */
+  stopLiveSession: () => Promise<void>;
   clearTranscript: () => void;
   loadVoice: () => Promise<void>;
   upsertVoice: (rec: VoiceRecord) => void;
@@ -61,6 +73,8 @@ export const useAppStore = create<AppState>((set, _get) => ({
   screen: "live",
   lastError: null,
   voiceMessages: [],
+  appPid: null,
+  durationSec: 0,
 
   init: async () => {
     if (initialized) return;
@@ -162,6 +176,13 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
   setLastError: (lastError: string | null) => set({ lastError }),
 
+  setAppPid: (appPid: number | null) => set({ appPid }),
+
+  setDurationSec: (s) =>
+    set((state) => ({
+      durationSec: typeof s === "function" ? s(state.durationSec) : s,
+    })),
+
   startLive: async (cfg: LiveConfig) => {
     set({ lastError: null, cost: null });
     try {
@@ -178,6 +199,49 @@ export const useAppStore = create<AppState>((set, _get) => ({
     } catch (e) {
       set({ lastError: String(e) });
     }
+  },
+
+  startLiveSession: async () => {
+    const state = _get();
+    const { settings, appPid } = state;
+    if (!settings) return;
+    state.clearTranscript();
+    const captureMode = settings.captureMode;
+    const cfg: LiveConfig = {
+      myLang: settings.myLang,
+      peerLang: settings.peerLang,
+      micId: settings.micId,
+      outputId: settings.outputId,
+      captureMode: settings.captureMode,
+      appPid: captureMode === "app" ? appPid : null,
+      echoTargetLanguage: settings.echoTargetLanguage,
+      duckingEnabled: settings.duckingEnabled,
+      duckLevel: settings.duckLevel,
+      mixOriginal: settings.mixOriginal,
+      mixGainDb: settings.mixGainDb,
+      vadEconomy: settings.vadEconomy,
+      testMode: false,
+    };
+    await state.startLive(cfg);
+  },
+
+  stopLiveSession: async () => {
+    const state = _get();
+    const { settings, transcript, durationSec } = state;
+    // Save transcript before stopping (only if there is meaningful content).
+    if (settings && shouldSaveCall(transcript)) {
+      try {
+        await ipc.historySaveCall(
+          settings.myLang,
+          settings.peerLang,
+          durationSec,
+          JSON.stringify(transcript)
+        );
+      } catch {
+        // Non-fatal: losing the history record is preferable to blocking stop
+      }
+    }
+    await state.stopLive();
   },
 
   clearTranscript: () => set({ transcript: [] }),
