@@ -10,14 +10,20 @@ pub fn setup_message(target_lang: &str, echo: bool, resume_handle: Option<&str>)
         Some(h) => json!({ "handle": h }),
         None => json!({}),
     };
+    // Wire shape per the official google-genai SDK converters
+    // (_LiveConnectConfig_to_mldev): the transcription configs and
+    // sessionResumption are TOP-LEVEL setup fields; only responseModalities and
+    // translationConfig nest under generationConfig. The JSON sample on the
+    // live-translate docs page nests the transcriptions inside generationConfig
+    // — that shape makes the server reject the setup (connection hangs).
     json!({ "setup": {
         "model": LIVE_MODEL,
         "generationConfig": {
             "responseModalities": ["AUDIO"],
-            "inputAudioTranscription": {},
-            "outputAudioTranscription": {},
             "translationConfig": { "targetLanguageCode": target_lang, "echoTargetLanguage": echo }
         },
+        "inputAudioTranscription": {},
+        "outputAudioTranscription": {},
         "sessionResumption": resumption
     }})
 }
@@ -104,7 +110,11 @@ mod tests {
         assert_eq!(gc["responseModalities"][0], "AUDIO");
         assert_eq!(gc["translationConfig"]["targetLanguageCode"], "ru");
         assert_eq!(gc["translationConfig"]["echoTargetLanguage"], false);
-        assert!(gc.get("inputAudioTranscription").is_some());
+        // Transcription configs are TOP-LEVEL setup fields (SDK wire shape) —
+        // inside generationConfig the server rejects the setup.
+        assert!(v["setup"].get("inputAudioTranscription").is_some());
+        assert!(v["setup"].get("outputAudioTranscription").is_some());
+        assert!(gc.get("inputAudioTranscription").is_none());
         assert!(v["setup"].get("sessionResumption").is_some()); // enabled even without handle
     }
     #[test]

@@ -75,6 +75,11 @@ fn emit(ev: &mpsc::Sender<SessionEvent>, label: &str, event: SessionEvent) {
 
 const PENDING_CAP: usize = 100; // ~10s of 100ms chunks
 
+/// Hard deadline for the first server frame after a setup send. A connection
+/// that stays silent past this is treated as a reconnect cause (it counts
+/// toward the attempt cap, so a permanently silent server ends in `Failed`).
+const FIRST_FRAME_TIMEOUT_SECS: u64 = 15;
+
 async fn run_session(
     cfg: LiveSessionConfig,
     mut ctl: mpsc::Receiver<Ctl>,
@@ -179,8 +184,25 @@ async fn run_session(
         // of this connection (see below), proving the link actually works.
         let mut connected = false;
 
+        // A server that accepts the socket but never answers the setup (e.g. a
+        // malformed setup it silently ignores) must not hang the session
+        // forever: give the first frame a hard deadline, then reconnect.
+        let first_frame_deadline =
+            tokio::time::sleep(std::time::Duration::from_secs(FIRST_FRAME_TIMEOUT_SECS));
+        tokio::pin!(first_frame_deadline);
+
         loop {
             tokio::select! {
+                _ = &mut first_frame_deadline, if !connected => {
+                    attempt += 1;
+                    tracing::warn!(
+                        label = cfg.label,
+                        attempt,
+                        reason = "no server frame after setup (timeout)",
+                        "live session reconnecting"
+                    );
+                    continue 'outer;
+                },
                 cmd = ctl.recv() => match cmd {
                     Some(Ctl::Audio(pcm)) => {
                         let msg = realtime_audio_message(&pcm).to_string();
