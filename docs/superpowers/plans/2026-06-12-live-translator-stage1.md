@@ -1530,7 +1530,7 @@ pub async fn wizard_install_cable() -> Result<(), String> {
 - [ ] YouTube video in browser: IN translation audible in headphones, original ducks to set level, restores on stop
 - [ ] Both directions simultaneously on a real call for 12+ minutes (survives at least one GoAway/reconnect: status chip flashes yellow, audio resumes, no app restart)
 - [ ] Unplug headphones mid-call: app pauses gracefully, no crash; replug + reselect device works
-- [ ] Close captured app mid-call: in_session shows source_lost toast; can pick new source
+- [ ] Close captured app mid-call: in_session shows source_lost toast; can pick new source. NOTE: process loopback may deliver silence (not an error) when the target pid dies — if the toast never fires, add a pid-liveness watchdog (OpenProcess poll ~2s) to the IN capture that exits the loop when the target is gone.
 - [ ] Kill app (taskkill) while ducking active; relaunch: ducked app volume restored on startup
 - [ ] Invalid API key: clear error, Start disabled; fixing key in Settings re-enables without restart
 - [ ] All UI strings render in both ru and en
