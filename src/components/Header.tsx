@@ -23,11 +23,13 @@ function LangPill({
   onChange,
   ariaLabel,
   tone,
+  disabled,
 }: {
   value: string;
   onChange: (code: string) => void;
   ariaLabel: string;
   tone: "out" | "in";
+  disabled?: boolean;
 }) {
   const ring =
     tone === "out"
@@ -39,6 +41,7 @@ function LangPill({
       selectedKey={value}
       onSelectionChange={(key) => onChange(String(key))}
       aria-label={ariaLabel}
+      isDisabled={disabled}
     >
       <SelectTrigger
         className={`lt-press group inline-flex items-center gap-2 h-9 pl-2.5 pr-3 rounded-pill border bg-surface text-[13px] font-medium text-ink ${ring}`}
@@ -115,17 +118,25 @@ export function Header() {
 
       {/* Center: compact language pair */}
       {settings && (
-        <div className="flex-1 flex items-center justify-center gap-2.5">
+        // The running session keeps the languages it was started with — the
+        // setup is sent once per connection and cannot be re-targeted live.
+        // Disable the controls so the UI never promises a change it can't make.
+        <div
+          className="flex-1 flex items-center justify-center gap-2.5"
+          title={isRunning ? t("live.langLockedHint") : undefined}
+        >
           <LangPill
             value={settings.myLang}
             onChange={(c) => void patchSettings({ myLang: c })}
             ariaLabel={t("live.myLang")}
             tone="out"
+            disabled={isRunning}
           />
           <button
             onClick={handleSwap}
+            disabled={isRunning}
             aria-label={t("live.swapLangs")}
-            className="lt-swap inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40"
+            className="lt-swap inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40 disabled:opacity-40 disabled:pointer-events-none"
           >
             <IconSwap size={15} />
           </button>
@@ -133,6 +144,7 @@ export function Header() {
             value={settings.peerLang}
             onChange={(c) => void patchSettings({ peerLang: c })}
             ariaLabel={t("live.peerLang")}
+            disabled={isRunning}
             tone="in"
           />
         </div>

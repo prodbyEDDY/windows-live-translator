@@ -218,6 +218,7 @@
       "sessionFailed": "Session ended with an error",
       "generic": "Something went wrong. Details: {{raw}}"
     },
-    "pickAppPlaceholder": "Pick an application…"
+    "pickAppPlaceholder": "Pick an application…",
+    "langLockedHint": "Languages are locked during a session — stop the translation first"
   }
 }
