@@ -36,7 +36,7 @@ pub fn run() {
 
             app.manage(AppState {
                 settings,
-                live: std::sync::Mutex::new(None),
+                live: tokio::sync::Mutex::new(None),
             });
 
             // Background poller emitting `devices:changed`. Call exactly once.

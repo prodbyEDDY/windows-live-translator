@@ -18,7 +18,16 @@ pub struct AppState {
     pub settings: SettingsStore,
     /// The single in-flight live session, if any. `Mutex<Option<…>>` enforces
     /// "at most one running session" and lets `live_stop` `take` it.
-    pub live: std::sync::Mutex<Option<LiveController>>,
+    ///
+    /// This is a **`tokio::sync::Mutex`** (not `std::sync::Mutex`) so the guard
+    /// can be held across an `.await` in the async `live_start`/`live_stop`
+    /// commands. `LiveController` is `Send` (all its fields — `Arc`, atomics,
+    /// crossbeam channels, the `LiveSession` mpsc sender, and `JoinHandle<()>`
+    /// — are `Send`; the only `!Send` value, the COM `DuckGuard`, lives entirely
+    /// inside the ducking thread and is never stored here), so holding the guard
+    /// across `spawn_blocking(...).await` is sound and lets us serialize
+    /// concurrent starts without a separate "starting" flag.
+    pub live: tokio::sync::Mutex<Option<LiveController>>,
 }
 
 /// Read the current settings snapshot.
@@ -73,37 +82,68 @@ pub fn audio_apps_list() -> Result<Vec<AppSession>, String> {
 
 /// Start a live session (OUT pipeline in this task).
 ///
+/// Async so the blocking WASAPI device-open / WS-spawn work (~100–600 ms)
+/// runs on a `spawn_blocking` pool thread instead of freezing the UI event
+/// loop. The `tokio::sync::Mutex` guard is held across the `.await`, which
+/// serializes concurrent `live_start` calls (the second sees `Some(_)` and
+/// returns `already_running`) without a race or a separate "starting" flag.
+///
+/// `LiveController::start` itself calls `tauri::async_runtime::block_on`
+/// internally; running it inside `spawn_blocking` is sound (calling `block_on`
+/// directly inside this async command would panic — "cannot block_on within a
+/// runtime").
+///
 /// Error strings are part of the contract:
 /// * `"no_api_key"` — no key stored; the UI must run the API-key step first.
 /// * `"already_running"` — a session is already live.
 /// * `"cable_missing"` — live mode but the VB-CABLE render endpoint is absent.
 #[tauri::command]
-pub fn live_start(
+pub async fn live_start(
     app: AppHandle,
     state: State<'_, AppState>,
     cfg: LiveConfig,
 ) -> Result<(), String> {
-    // Reject a second concurrent session before doing any work. Recover from
-    // poisoning: a panic mid-start must not brick live commands until restart.
-    let mut guard = state.live.lock().unwrap_or_else(|p| p.into_inner());
+    // Hold the async guard across the await: this both reserves the single slot
+    // (rejecting a concurrent second start) and lets us store the controller
+    // once built.
+    let mut guard = state.live.lock().await;
     if guard.is_some() {
         return Err("already_running".to_string());
     }
 
     let api_key = get_api_key().ok_or_else(|| "no_api_key".to_string())?;
 
-    let controller = LiveController::start(app, api_key, cfg).map_err(|e| e.to_string())?;
+    // Build the controller off the event loop. `LiveController::start` does the
+    // blocking device-open + WS spawn (and its own internal `block_on`), so it
+    // must run inside `spawn_blocking`, not inline.
+    let controller = tauri::async_runtime::spawn_blocking(move || {
+        LiveController::start(app, api_key, cfg)
+    })
+    .await
+    .map_err(|e| format!("live_start join: {e}"))?
+    .map_err(|e| e.to_string())?;
+
     *guard = Some(controller);
     Ok(())
 }
 
 /// Stop the live session if one is running. A no-op if nothing is live.
+///
+/// Async so the blocking teardown (joining audio threads, flushing the WS
+/// close — up to a few hundred ms) runs on a `spawn_blocking` pool thread
+/// instead of freezing the UI event loop. `LiveController::stop` uses
+/// `tauri::async_runtime::block_on` internally; running it inside
+/// `spawn_blocking` is sound.
 #[tauri::command]
-pub fn live_stop(state: State<'_, AppState>) {
+pub async fn live_stop(state: State<'_, AppState>) -> Result<(), String> {
     // Take the controller out under the lock, then drop the lock before the
     // (blocking) teardown so a concurrent `live_start` isn't starved.
-    let controller = state.live.lock().unwrap_or_else(|p| p.into_inner()).take();
+    //
+    // (Tauri requires async commands that borrow `State` to return a `Result`;
+    // the teardown itself is infallible, so `Ok(())` is always returned.)
+    let controller = state.live.lock().await.take();
     if let Some(controller) = controller {
-        controller.stop();
+        let _ = tauri::async_runtime::spawn_blocking(move || controller.stop()).await;
     }
+    Ok(())
 }
