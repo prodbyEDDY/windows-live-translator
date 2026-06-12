@@ -28,7 +28,10 @@ interface AppState {
   init: () => Promise<void>;
   patchSettings: (p: Partial<Settings>) => Promise<void>;
   refreshApps: () => Promise<void>;
+  refreshDevices: () => Promise<void>;
   setScreen: (screen: Screen) => void;
+  setKeyStatus: (ks: KeyStatus) => void;
+  setLastError: (err: string | null) => void;
   startLive: (cfg: LiveConfig) => Promise<void>;
   stopLive: () => Promise<void>;
   clearTranscript: () => void;
@@ -117,7 +120,20 @@ export const useAppStore = create<AppState>((set, _get) => ({
     }
   },
 
+  refreshDevices: async () => {
+    try {
+      const devices = await ipc.devicesList();
+      set({ devices });
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
+  },
+
   setScreen: (screen: Screen) => set({ screen }),
+
+  setKeyStatus: (keyStatus: KeyStatus) => set({ keyStatus }),
+
+  setLastError: (lastError: string | null) => set({ lastError }),
 
   startLive: async (cfg: LiveConfig) => {
     set({ lastError: null });

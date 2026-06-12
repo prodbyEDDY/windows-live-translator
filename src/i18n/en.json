@@ -27,5 +27,45 @@
   },
   "app": {
     "title": "Live Translator"
+  },
+  "settings": {
+    "comingSoon": "Coming soon",
+    "sections": {
+      "apiKey": "API Key",
+      "audio": "Audio",
+      "translation": "Translation",
+      "app": "Application"
+    },
+    "apiKey": {
+      "placeholder": "Enter Gemini API key",
+      "saveCheck": "Save / Check",
+      "show": "Show key",
+      "hide": "Hide key",
+      "valid": "Key is valid",
+      "invalid": "Key is invalid",
+      "missing": "Key not set",
+      "error": "Check error",
+      "getKey": "Get key at AI Studio"
+    },
+    "audio": {
+      "mic": "Microphone",
+      "output": "Output device",
+      "systemDefault": "System default",
+      "cableInstalled": "installed",
+      "cableNotFound": "not found",
+      "wizardButton": "Setup wizard"
+    },
+    "translation": {
+      "echoTargetLanguage": "Echo peer speech",
+      "echoTargetLanguageHint": "If the peer is already speaking your language: repeat their speech (on) or stay silent (off)",
+      "duckingEnabled": "Ducking",
+      "duckLevel": "Duck level",
+      "mixOriginal": "Mix original",
+      "mixGainDb": "Original gain"
+    },
+    "app": {
+      "uiLang": "Interface language",
+      "version": "Version"
+    }
   }
 }

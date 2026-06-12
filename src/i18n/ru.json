@@ -27,5 +27,45 @@
   },
   "app": {
     "title": "Live Translator"
+  },
+  "settings": {
+    "comingSoon": "Скоро",
+    "sections": {
+      "apiKey": "API-ключ",
+      "audio": "Аудио",
+      "translation": "Перевод",
+      "app": "Приложение"
+    },
+    "apiKey": {
+      "placeholder": "Введите API-ключ Gemini",
+      "saveCheck": "Сохранить / Проверить",
+      "show": "Показать ключ",
+      "hide": "Скрыть ключ",
+      "valid": "Ключ действителен",
+      "invalid": "Ключ недействителен",
+      "missing": "Ключ не задан",
+      "error": "Ошибка проверки",
+      "getKey": "Получить ключ в AI Studio"
+    },
+    "audio": {
+      "mic": "Микрофон",
+      "output": "Устройство вывода",
+      "systemDefault": "Системное по умолчанию",
+      "cableInstalled": "установлен",
+      "cableNotFound": "не найден",
+      "wizardButton": "Мастер настройки"
+    },
+    "translation": {
+      "echoTargetLanguage": "Повторять речь собеседника",
+      "echoTargetLanguageHint": "Если собеседник уже говорит на вашем языке: повторять его речь (вкл) или молчать (выкл)",
+      "duckingEnabled": "Понижение громкости",
+      "duckLevel": "Уровень понижения",
+      "mixOriginal": "Микшировать оригинал",
+      "mixGainDb": "Усиление оригинала"
+    },
+    "app": {
+      "uiLang": "Язык интерфейса",
+      "version": "Версия"
+    }
   }
 }
