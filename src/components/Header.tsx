@@ -125,31 +125,43 @@ export function Header() {
         // setup is sent once per connection and cannot be re-targeted live.
         // Disable the controls so the UI never promises a change it can't make.
         <div
-          className="flex-1 flex items-center justify-center gap-3"
+          className="flex-1 flex items-end justify-center gap-3"
           title={isRunning ? t("live.langLockedHint") : undefined}
         >
-          <LangPill
-            value={settings.myLang}
-            onChange={(c) => void patchSettings({ myLang: c })}
-            ariaLabel={t("live.myLang")}
-            tone="out"
-            disabled={isRunning}
-          />
+          {/* "You speak" — your language (outgoing direction). */}
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-label text-cobalt-deep font-medium px-1 leading-none">
+              {t("live.youSpeak")}
+            </span>
+            <LangPill
+              value={settings.myLang}
+              onChange={(c) => void patchSettings({ myLang: c })}
+              ariaLabel={t("live.youSpeak")}
+              tone="out"
+              disabled={isRunning}
+            />
+          </div>
           <button
             onClick={handleSwap}
             disabled={isRunning}
             aria-label={t("live.swapLangs")}
-            className="lt-swap inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40 disabled:opacity-40 disabled:pointer-events-none"
+            className="lt-swap mb-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40 disabled:opacity-40 disabled:pointer-events-none"
           >
             <IconSwap size={15} />
           </button>
-          <LangPill
-            value={settings.peerLang}
-            onChange={(c) => void patchSettings({ peerLang: c })}
-            ariaLabel={t("live.peerLang")}
-            disabled={isRunning}
-            tone="in"
-          />
+          {/* "Peer speaks" — their language (incoming direction). */}
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-label text-muted font-medium px-1 leading-none">
+              {t("live.peerSpeaks")}
+            </span>
+            <LangPill
+              value={settings.peerLang}
+              onChange={(c) => void patchSettings({ peerLang: c })}
+              ariaLabel={t("live.peerSpeaks")}
+              disabled={isRunning}
+              tone="in"
+            />
+          </div>
         </div>
       )}
 

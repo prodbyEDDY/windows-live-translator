@@ -240,6 +240,8 @@
   "live": {
     "myLang": "My language",
     "peerLang": "Peer language",
+    "youSpeak": "You speak",
+    "peerSpeaks": "Peer speaks",
     "swapLangs": "Swap languages",
     "audioSource": "Peer audio source",
     "systemAudio": "Entire system audio",
