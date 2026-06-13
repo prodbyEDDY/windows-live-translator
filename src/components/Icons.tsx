@@ -105,6 +105,28 @@ export function IconInfo(props: IconProps) {
   );
 }
 
+/** Circled "?" — Help. */
+export function IconHelp(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.2 9.3a2.8 2.8 0 0 1 5.3 1.2c0 1.9-2.7 2.3-2.7 4" />
+      <path d="M12 17h0" />
+    </svg>
+  );
+}
+
+/** Box with an out-arrow — external link. */
+export function IconExternalLink(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M19 14v4.5A1.5 1.5 0 0 1 17.5 20h-11A1.5 1.5 0 0 1 5 18.5v-11A1.5 1.5 0 0 1 6.5 6H11" />
+    </svg>
+  );
+}
+
 /** Triangle "!" — warning Banner tone. */
 export function IconWarning(props: IconProps) {
   return (

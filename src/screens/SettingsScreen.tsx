@@ -242,7 +242,10 @@ export function SettingsScreen() {
         )}
 
         {/* ---- API key ---- */}
-        <SettingsCard title={t("settings.sections.apiKey")}>
+        <SettingsCard
+          title={t("settings.sections.apiKey")}
+          description={t("settings.apiKey.sectionDesc")}
+        >
           <ApiKeyField />
           <button
             onClick={() => void openUrl("https://aistudio.google.com/apikey")}
@@ -253,7 +256,10 @@ export function SettingsScreen() {
         </SettingsCard>
 
         {/* ---- Audio ---- */}
-        <SettingsCard title={t("settings.sections.audio")}>
+        <SettingsCard
+          title={t("settings.sections.audio")}
+          description={t("settings.audio.sectionDesc")}
+        >
           <DeviceSelect
             value={settings.micId}
             onChange={(v) => void patchSettings({ micId: v })}
@@ -296,10 +302,22 @@ export function SettingsScreen() {
               {t("settings.audio.wizardButton")}
             </button>
           </div>
+
+          <div className="border-t border-hairline pt-4">
+            <SettingSwitch
+              selected={settings.idlePassthrough}
+              onChange={(c) => void patchSettings({ idlePassthrough: c })}
+              label={t("settings.audio.idlePassthrough")}
+              hint={t("settings.audio.idlePassthroughHint")}
+            />
+          </div>
         </SettingsCard>
 
         {/* ---- Translation ---- */}
-        <SettingsCard title={t("settings.sections.translation")}>
+        <SettingsCard
+          title={t("settings.sections.translation")}
+          description={t("settings.translation.sectionDesc")}
+        >
           <SettingSwitch
             selected={settings.echoTargetLanguage}
             onChange={(c) => void patchSettings({ echoTargetLanguage: c })}
@@ -311,6 +329,7 @@ export function SettingsScreen() {
             selected={settings.duckingEnabled}
             onChange={(c) => void patchSettings({ duckingEnabled: c })}
             label={t("settings.translation.duckingEnabled")}
+            hint={t("settings.translation.duckingEnabledHint")}
           >
             {settings.duckingEnabled && (
               <div className="ml-11 flex flex-col gap-1.5">
@@ -343,6 +362,7 @@ export function SettingsScreen() {
             selected={settings.mixOriginal}
             onChange={(c) => void patchSettings({ mixOriginal: c })}
             label={t("settings.translation.mixOriginal")}
+            hint={t("settings.translation.mixOriginalHint")}
           >
             {settings.mixOriginal && (
               <div className="ml-11 flex flex-col gap-1.5">
@@ -380,7 +400,10 @@ export function SettingsScreen() {
         </SettingsCard>
 
         {/* ---- Voice messages ---- */}
-        <SettingsCard title={t("settings.sections.voice")}>
+        <SettingsCard
+          title={t("settings.sections.voice")}
+          description={t("settings.voice.sectionDesc")}
+        >
           <Field
             label={t("settings.voice.ttsVoice")}
             hint={t("settings.voice.ttsVoiceHint")}

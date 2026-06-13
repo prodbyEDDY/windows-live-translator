@@ -3,7 +3,8 @@
     "live": "Live",
     "voice": "Voice",
     "history": "History",
-    "settings": "Settings"
+    "settings": "Settings",
+    "help": "Help"
   },
   "screen": {
     "live": "Live Translation",
@@ -29,6 +30,62 @@
   "app": {
     "title": "Live Translator"
   },
+  "help": {
+    "title": "Help",
+    "intro": "Live Translator translates speech during calls and voice messages. Here's how it works and how to set it up in a couple of minutes.",
+    "howItWorks": {
+      "heading": "How it works",
+      "body": "Your microphone doesn't go straight into Zoom/Meet — it goes into this app, which translates your speech and feeds the translation into the VB-CABLE virtual cable that your call app uses as its microphone. The peer's audio is captured from their app, translated, and played to your headphones.",
+      "out": "Outgoing: your mic → translation → VB-CABLE → the peer hears the translation.",
+      "in": "Incoming: the peer's audio → translation → your headphones (original is ducked)."
+    },
+    "quickStart": {
+      "heading": "Quick start",
+      "steps": [
+        "Install VB-CABLE (button below) and restart your computer.",
+        "In Settings, choose your microphone and output device (headphones recommended).",
+        "In Zoom / Meet / Teams, set the microphone to “CABLE Output (VB-Audio Virtual Cable)”.",
+        "On the Live screen, pick the peer's audio source (their app, or “All system audio”).",
+        "Choose the languages and press Start."
+      ]
+    },
+    "micSetup": {
+      "heading": "Important: the mic in Zoom / Meet / Teams",
+      "body": "For the peer to hear the translation, set the call's microphone to “CABLE Output (VB-Audio Virtual Cable)” — not your regular mic. This is the key step; without it the translation has nowhere to go.",
+      "note": "When translation is off but the call's mic is set to CABLE Output, the app passes your normal voice through to the cable by default so you're still audible (can be turned off in Settings → Audio)."
+    },
+    "cable": {
+      "heading": "VB-CABLE — the virtual audio cable",
+      "body": "The free VB-CABLE tool creates a virtual microphone the app uses to deliver the translation into Zoom/Meet. Install it once and restart your computer.",
+      "button": "Download VB-CABLE",
+      "wizard": "Open setup wizard"
+    },
+    "voice": {
+      "heading": "Voice messages",
+      "body": "Drop an audio file (e.g. a WhatsApp voice message) into the window to get a transcript and translation. Or record with the mic button: it's translated, voiced, and saved as an .ogg file you can drag back into WhatsApp. The speech voice is chosen in Settings."
+    },
+    "trouble": {
+      "heading": "Common issues",
+      "items": [
+        {
+          "q": "The peer can't hear me",
+          "a": "Check that the call's mic is set to “CABLE Output”, VB-CABLE is installed, and a translation session is running (or idle mic passthrough is enabled)."
+        },
+        {
+          "q": "I can't hear the peer's translation",
+          "a": "Check the output device in Settings and its volume. Make sure the correct peer audio source is selected on the Live screen."
+        },
+        {
+          "q": "There's an echo",
+          "a": "Use headphones instead of speakers — otherwise the peer's audio leaks back into your mic."
+        },
+        {
+          "q": "Translation won't start or shows an error",
+          "a": "Check your Gemini key's balance and limits in Google AI Studio and your internet connection. The error text on the Live screen names the cause."
+        }
+      ]
+    }
+  },
   "settings": {
     "sections": {
       "apiKey": "API Key",
@@ -38,6 +95,7 @@
       "app": "Application"
     },
     "apiKey": {
+      "sectionDesc": "A Gemini key is required to translate speech and voice messages. It's stored only on this computer.",
       "placeholder": "Enter Gemini API key",
       "saveCheck": "Save / Check",
       "show": "Show key",
@@ -49,25 +107,32 @@
       "getKey": "Get key at AI Studio"
     },
     "audio": {
+      "sectionDesc": "Microphone — your voice to be translated. Output device — where you hear the peer's translation (headphones recommended to avoid echo).",
       "mic": "Microphone",
       "output": "Output device",
       "systemDefault": "System default",
       "cableInstalled": "installed",
       "cableNotFound": "not found",
       "wizardButton": "Setup wizard",
-      "deviceMissing": "Saved device not found — using the system default"
+      "deviceMissing": "Saved device not found — using the system default",
+      "idlePassthrough": "Pass the mic through to VB-CABLE when translation is off",
+      "idlePassthroughHint": "When no translation session is running, your normal voice goes straight to VB-CABLE so the peer still hears you — untranslated. Saves switching the mic in Zoom/Meet between talking and translating."
     },
     "translation": {
+      "sectionDesc": "Fine-tuning for live translation. The defaults work well for most calls.",
       "echoTargetLanguage": "Echo peer speech",
       "echoTargetLanguageHint": "If the peer is already speaking your language: repeat their speech (enabled) or stay silent (disabled)",
-      "duckingEnabled": "Ducking",
+      "duckingEnabled": "Lower the peer's volume while translating",
+      "duckingEnabledHint": "While a translation is playing, the peer app's original volume is automatically lowered so the translation is clearer, then restored afterwards.",
       "duckLevel": "Duck level",
-      "mixOriginal": "Mix original",
+      "mixOriginal": "Mix in your original voice",
+      "mixOriginalHint": "The peer hears your translation plus your original voice quietly underneath — keeps your intonation. Original loudness is set below.",
       "mixGainDb": "Original gain",
       "vadEconomy": "Silence economy (VAD)",
       "vadEconomyHint": "Doesn't send silence to Gemini — saves up to ~50%, but may clip the very start of a phrase"
     },
     "voice": {
+      "sectionDesc": "Settings for translating voice messages (recording and dropped-in files).",
       "ttsVoice": "Speech voice (TTS)",
       "ttsVoiceHint": "The voice used to speak the translation of recorded messages. Voices differ in timbre and gender — e.g. Puck and Charon sound male, Kore and Zephyr female."
     },
@@ -179,6 +244,8 @@
     "audioSource": "Peer audio source",
     "systemAudio": "Entire system audio",
     "transcriptEmpty": "Transcript will appear here once the session starts",
+    "labelOriginal": "Original",
+    "labelTranslation": "Translation",
     "empty": {
       "step1": "pick a source",
       "step2": "press Start",

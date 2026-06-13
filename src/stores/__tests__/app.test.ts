@@ -46,6 +46,7 @@ const BASE_SETTINGS: Settings = {
   uiLang: "ru",
   wizardDone: true,
   ttsVoice: "Kore",
+  idlePassthrough: true,
 };
 
 beforeEach(() => {

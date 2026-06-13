@@ -7,6 +7,7 @@ import { LiveScreen } from "./screens/LiveScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { VoiceScreen } from "./screens/VoiceScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
+import { HelpScreen } from "./screens/HelpScreen";
 import { WizardScreen } from "./screens/WizardScreen";
 
 function App() {
@@ -37,6 +38,8 @@ function App() {
         return <HistoryScreen />;
       case "settings":
         return <SettingsScreen />;
+      case "help":
+        return <HelpScreen />;
       // "wizard" is handled by the early return below (full-window, no chrome).
     }
   }

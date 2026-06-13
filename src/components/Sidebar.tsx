@@ -6,6 +6,7 @@ import {
   IconMicMessage,
   IconHistory,
   IconGear,
+  IconHelp,
   IconCheck,
   IconCross,
 } from "./Icons";
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "voice", labelKey: "nav.voice", icon: IconMicMessage },
   { id: "history", labelKey: "nav.history", icon: IconHistory },
   { id: "settings", labelKey: "nav.settings", icon: IconGear },
+  { id: "help", labelKey: "nav.help", icon: IconHelp },
 ];
 
 export function Sidebar() {

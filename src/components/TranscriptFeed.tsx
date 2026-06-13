@@ -136,9 +136,11 @@ function TranscriptBubble({
   const dotColor = isOut ? "bg-cobalt" : "bg-tangerine";
   const typingColor = isOut ? "text-cobalt" : "text-muted";
 
-  const primary = line.translated || line.original;
-  const hasSub = !!(line.translated && line.original);
   const isTyping = !line.closed;
+  // Typing dots attach to the line that's actively streaming: the translation
+  // when present, otherwise the original.
+  const typingOnTranslation = isTyping && !!line.translated;
+  const typingOnOriginal = isTyping && !line.translated;
 
   // Soft bubble radius, with the corner nearest the speaker squared.
   const radius = isOut
@@ -172,23 +174,66 @@ function TranscriptBubble({
         className={`lt-bubble-in max-w-[72%] px-4 py-3 ${bubbleBg}`}
         style={{ borderRadius: radius }}
       >
-        <p className="text-lead leading-relaxed text-ink">
-          {primary}
-          {isTyping && (
+        {/* Translation — the emphasized payload, explicitly labelled. */}
+        {line.translated && (
+          <>
             <span
-              className={`lt-typing align-middle ml-1.5 ${typingColor}`}
-              aria-hidden="true"
+              className={`block text-label text-muted mb-1 ${isOut ? "text-right" : ""}`}
             >
-              <span />
-              <span />
-              <span />
+              {t("live.labelTranslation")}
             </span>
-          )}
-        </p>
-        {hasSub && (
-          <p className="text-caption leading-snug text-ink-2 mt-1.5">
-            {line.original}
-          </p>
+            <p className="text-lead leading-relaxed text-ink">
+              {line.translated}
+              {typingOnTranslation && (
+                <span
+                  className={`lt-typing align-middle ml-1.5 ${typingColor}`}
+                  aria-hidden="true"
+                >
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              )}
+            </p>
+          </>
+        )}
+
+        {/* Original — quiet, explicitly labelled. Sits under the translation
+            (with a hairline divider) when both are present. */}
+        {line.original && (
+          <div className={line.translated ? "mt-2.5 border-t border-ink/10 pt-2.5" : ""}>
+            <span
+              className={`block text-label text-muted mb-1 ${isOut ? "text-right" : ""}`}
+            >
+              {t("live.labelOriginal")}
+            </span>
+            <p
+              className={`leading-snug ${
+                line.translated ? "text-caption text-ink-2" : "text-lead text-ink"
+              }`}
+            >
+              {line.original}
+              {typingOnOriginal && (
+                <span
+                  className={`lt-typing align-middle ml-1.5 ${typingColor}`}
+                  aria-hidden="true"
+                >
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Nothing yet — show the typing pulse alone so a just-opened turn isn't blank. */}
+        {!line.translated && !line.original && (
+          <span className={`lt-typing ${typingColor}`} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
         )}
       </div>
     </div>

@@ -40,6 +40,9 @@ export interface Settings {
   uiLang: string;
   wizardDone: boolean;
   ttsVoice: string;
+  /** When no session runs, pipe the raw mic into VB-CABLE so the peer hears the
+   *  original (untranslated) voice instead of silence. */
+  idlePassthrough: boolean;
 }
 
 export interface LiveConfig {
