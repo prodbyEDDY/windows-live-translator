@@ -23,7 +23,7 @@ import { TranscriptFeed } from "../components/TranscriptFeed";
 import { VoiceCard } from "../components/VoiceCard";
 import { Banner } from "../components/Banner";
 import { LangPairPill } from "../components/LangPairPill";
-import { IconSearch } from "../components/Icons";
+import { IconSearch, IconHistory } from "../components/Icons";
 import { previewText } from "../lib/history";
 import { useAppStore } from "../stores/app";
 import { formatDuration, localeFor } from "../lib/format";
@@ -179,24 +179,24 @@ export function HistoryScreen() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-4 lt-screen-in">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-7 flex flex-col gap-6 lt-screen-in">
         {/* ---- Title + search + clear ---- */}
-        <div className="flex items-center gap-3 shrink-0 min-h-9">
+        <div className="flex items-center gap-3 shrink-0 min-h-10">
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
             {t("screen.history")}
           </h1>
           <div className="flex-1" />
           {/* Search pill */}
-          <div className="relative w-56">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-              <IconSearch size={15} />
+          <div className="relative w-64">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted">
+              <IconSearch size={16} />
             </span>
             <input
               type="search"
               placeholder={t("history.searchPlaceholder")}
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 rounded-pill border border-hairline bg-surface text-[13px] text-ink placeholder:text-muted focus:border-cobalt/50 outline-none transition-colors"
+              className="w-full h-10 pl-10 pr-3.5 rounded-pill border border-hairline bg-surface text-caption text-ink placeholder:text-muted focus:border-cobalt/50 outline-none transition-colors"
             />
           </div>
 
@@ -209,7 +209,7 @@ export function HistoryScreen() {
             <AlertDialogTrigger>
               <button
                 onClick={() => setClearDialogOpen(true)}
-                className="lt-press shrink-0 px-3.5 h-9 rounded-pill border border-danger/40 text-[12px] text-danger hover:bg-danger/5"
+                className="lt-press shrink-0 px-4 h-10 rounded-pill border border-danger/40 text-label font-medium text-danger hover:bg-danger/5"
               >
                 {t("history.clearHistory")}
               </button>
@@ -223,7 +223,9 @@ export function HistoryScreen() {
                     </AlertDialogHeading>
                   </AlertDialogHeader>
                   <AlertDialogBody>
-                    <p className="text-sm text-muted">{t("history.confirmClearBody")}</p>
+                    <p className="text-caption text-ink-2 leading-relaxed">
+                      {t("history.confirmClearBody")}
+                    </p>
                   </AlertDialogBody>
                   <AlertDialogFooter>
                     <Button
@@ -264,18 +266,18 @@ export function HistoryScreen() {
           onSelectionChange={(key) => setTab(key as "calls" | "voice")}
           className="flex flex-col flex-1 min-h-0"
         >
-          <TabList className="flex justify-start gap-6 p-0 bg-transparent border-b border-hairline rounded-none shrink-0">
+          <TabList className="flex justify-start gap-8 p-0 bg-transparent border-b border-hairline rounded-none shrink-0">
             {/* TabIndicator MUST live INSIDE a Tab. */}
             <Tab
               id="calls"
-              className="relative flex-none w-auto px-0 pb-2.5 bg-transparent text-[13px] font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
+              className="relative flex-none w-auto px-0 pb-3 bg-transparent text-lead font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
             >
               {t("history.tabCalls")}
               <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
             </Tab>
             <Tab
               id="voice"
-              className="relative flex-none w-auto px-0 pb-2.5 bg-transparent text-[13px] font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
+              className="relative flex-none w-auto px-0 pb-3 bg-transparent text-lead font-medium text-muted data-[selected]:text-ink data-[selected]:bg-transparent cursor-pointer rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
             >
               {t("history.tabVoice")}
               <TabIndicator className="absolute -bottom-px left-0 right-0 h-[2px] rounded-full bg-cobalt" />
@@ -283,16 +285,16 @@ export function HistoryScreen() {
           </TabList>
 
           {/* ---- Calls ---- */}
-          <TabPanel id="calls" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-3">
+          <TabPanel id="calls" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-5">
             {callsLoading ? (
               <Loading t={t} />
             ) : calls.length === 0 ? (
               <Empty>{t("history.emptyCalls")}</Empty>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 {calls.map((call) => {
                   const expanded = expandedCallIds.has(call.id);
-                  const preview = previewText(call.transcriptJson, 90);
+                  const preview = previewText(call.transcriptJson, 180);
                   const fullCall = fullCalls.get(call.id);
                   const isLoadingFull = loadingCallIds.has(call.id);
                   // Prefer the full (untruncated) record once fetched; the
@@ -308,44 +310,44 @@ export function HistoryScreen() {
                       className="bg-surface border border-hairline rounded-card lt-card overflow-hidden"
                     >
                       <button
-                        className="flex items-center gap-3 h-11 px-4 text-left hover:bg-stone-50 transition-colors w-full"
+                        className="flex flex-col gap-2.5 w-full px-5 py-4 text-left hover:bg-stone-50 transition-colors"
                         onClick={() => toggleCall(call.id)}
                         aria-expanded={expanded}
                       >
-                        <span
-                          aria-hidden="true"
-                          className="text-[11px] text-stone-500 shrink-0 select-none w-3"
-                        >
-                          {expanded ? "▼" : "▶"}
-                        </span>
-                        <span className="font-mono text-[12px] text-muted shrink-0 tabular-nums">
-                          {formatDate(call.startedAt, i18n.language)}
-                        </span>
-                        <LangPairPill from={call.myLang} to={call.peerLang} />
-                        {preview && !expanded && (
-                          <span className="text-[13px] text-muted truncate flex-1 min-w-0">
-                            {preview}
+                        {/* Meta row: chevron · time · language pair · duration */}
+                        <div className="flex items-center gap-3 w-full">
+                          <Chevron open={expanded} />
+                          <span className="font-mono text-caption text-muted shrink-0 tabular-nums">
+                            {formatDate(call.startedAt, i18n.language)}
                           </span>
+                          <LangPairPill from={call.myLang} to={call.peerLang} />
+                          <span className="font-mono text-caption text-ink tabular-nums ml-auto shrink-0">
+                            {formatDuration(call.durationSecs)}
+                          </span>
+                        </div>
+
+                        {/* Transcript preview: roomier, two lines, calm line-height */}
+                        {preview && !expanded && (
+                          <p className="text-body text-ink-2 leading-relaxed line-clamp-2 pl-[26px]">
+                            {preview}
+                          </p>
                         )}
-                        <span className="font-mono text-[12px] text-ink tabular-nums ml-auto shrink-0">
-                          {formatDuration(call.durationSecs)}
-                        </span>
                       </button>
 
                       {expanded && (
                         <div
                           className="border-t border-hairline bg-paper"
-                          style={{ minHeight: 120, maxHeight: 380, display: "flex", flexDirection: "column" }}
+                          style={{ minHeight: 180, maxHeight: 460, display: "flex", flexDirection: "column" }}
                         >
                           {isLoadingFull && !fullCall ? (
-                            <div className="flex items-center justify-center gap-2 p-4 text-muted text-xs">
+                            <div className="flex items-center justify-center gap-2 p-6 text-muted text-caption">
                               <Spinner size="sm" />
                               <span>{t("history.loading")}</span>
                             </div>
                           ) : lines.length > 0 ? (
                             <TranscriptFeed lines={lines} />
                           ) : (
-                            <div className="flex items-center justify-center p-4 text-muted text-xs">
+                            <div className="flex items-center justify-center p-6 text-muted text-caption">
                               —
                             </div>
                           )}
@@ -359,13 +361,13 @@ export function HistoryScreen() {
           </TabPanel>
 
           {/* ---- Voice ---- */}
-          <TabPanel id="voice" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-3">
+          <TabPanel id="voice" className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pt-5">
             {voiceLoading ? (
               <Loading t={t} />
             ) : voiceRecords.length === 0 ? (
               <Empty>{t("history.emptyVoice")}</Empty>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 {voiceRecords.map((rec) => (
                   <VoiceCard key={rec.id} record={rec} />
                 ))}
@@ -378,20 +380,42 @@ export function HistoryScreen() {
   );
 }
 
+/** Disclosure chevron — minimal inline SVG, rotates 90° when open. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 function Loading({ t }: { t: (k: string) => string }) {
   return (
-    <div className="flex items-center justify-center p-8">
+    <div className="flex items-center justify-center p-10">
       <Spinner size="sm" />
-      <span className="ml-2 text-sm text-muted">{t("history.loading")}</span>
+      <span className="ml-2.5 text-caption text-muted">{t("history.loading")}</span>
     </div>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
-      <span className="font-display text-[64px] leading-none text-stone-200">⌬</span>
-      <p className="text-[13px] text-muted">{children}</p>
+    <div className="flex flex-col items-center justify-center gap-5 px-6 py-16 text-center">
+      <span aria-hidden="true" className="text-stone-200">
+        <IconHistory size={56} />
+      </span>
+      <p className="text-lead text-muted leading-relaxed max-w-xs">{children}</p>
     </div>
   );
 }

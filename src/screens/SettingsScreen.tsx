@@ -22,7 +22,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
 import { ApiKeyField } from "../components/ApiKeyField";
 import { Banner } from "../components/Banner";
-import { SectionTitle } from "../components/ScreenShell";
 import { IconCheck, IconCross } from "../components/Icons";
 import { ipc, type DeviceInfo } from "../lib/ipc";
 import i18next from "../i18n";
@@ -51,17 +50,58 @@ function deviceLabel(
   return devices.find((d) => d.id === id)?.name ?? defaultLabel;
 }
 
-/** Settings surface card with an Unbounded section title. */
-function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
+/** Shared trigger styling for every select on this screen. */
+const SELECT_TRIGGER =
+  "lt-press inline-flex items-center gap-2 h-11 px-3.5 rounded-input border border-hairline bg-surface text-body text-ink hover:border-hairline-strong";
+
+/**
+ * A settings group: a spacious surface card with a quiet sentence-case title
+ * and an optional one-line description. No uppercase eyebrow, no side rule.
+ */
+function SettingsCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="bg-surface border border-hairline rounded-card lt-card p-5 flex flex-col gap-4">
-      <SectionTitle>{title}</SectionTitle>
+    <section className="bg-surface border border-hairline rounded-card lt-card p-6 flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-display text-emphasis font-semibold tracking-tight text-ink leading-snug">
+          {title}
+        </h2>
+        {description && (
+          <p className="text-caption text-muted leading-snug max-w-prose">{description}</p>
+        )}
+      </div>
       {children}
     </section>
   );
 }
 
-/** Restyled HeroUI Switch — cobalt accent, optional hint. */
+/** A labelled field row — quiet sentence-case label above its control. */
+function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-caption text-ink-2">{label}</label>
+      {children}
+      {hint && <p className="text-label text-muted leading-snug max-w-prose">{hint}</p>}
+    </div>
+  );
+}
+
+/** Restyled HeroUI Switch — cobalt accent, optional hint + disclosed children. */
 function SettingSwitch({
   selected,
   onChange,
@@ -76,7 +116,7 @@ function SettingSwitch({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       <Switch
         isSelected={selected}
         onChange={onChange}
@@ -85,9 +125,9 @@ function SettingSwitch({
         <SwitchControl className="data-[selected]:bg-cobalt">
           <SwitchThumb />
         </SwitchControl>
-        <SwitchContent className="text-[14px] text-ink">{label}</SwitchContent>
+        <SwitchContent className="text-body text-ink">{label}</SwitchContent>
       </Switch>
-      {hint && <p className="text-[12px] text-muted ml-11">{hint}</p>}
+      {hint && <p className="text-label text-muted leading-snug ml-11 max-w-prose">{hint}</p>}
       {children}
     </div>
   );
@@ -117,8 +157,10 @@ export function DeviceSelect({
   const selectedKey = missing ? "__default__" : (value ?? "__default__");
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-[13px] text-muted">{label}</label>
+    <Field
+      label={label}
+      hint={missing ? t("settings.audio.deviceMissing") : undefined}
+    >
       <SelectRoot
         selectedKey={selectedKey}
         onSelectionChange={(key) =>
@@ -130,7 +172,7 @@ export function DeviceSelect({
           if (open) onOpen();
         }}
       >
-        <SelectTrigger className="lt-press w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
+        <SelectTrigger className={`${SELECT_TRIGGER} w-full`}>
           <SelectValue className="flex-1 text-left truncate" />
           <SelectIndicator />
         </SelectTrigger>
@@ -148,10 +190,7 @@ export function DeviceSelect({
           </ListBox>
         </SelectPopover>
       </SelectRoot>
-      {missing && (
-        <p className="text-[12px] text-muted">{t("settings.audio.deviceMissing")}</p>
-      )}
-    </div>
+    </Field>
   );
 }
 
@@ -188,8 +227,8 @@ export function SettingsScreen() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 lt-screen-in">
-        <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
+      <div className="w-full max-w-[760px] mx-auto px-6 py-8 flex flex-col gap-6 lt-screen-in">
+        <h1 className="font-display text-h1 font-semibold tracking-tight text-ink leading-none">
           {t("screen.settings")}
         </h1>
 
@@ -207,7 +246,7 @@ export function SettingsScreen() {
           <ApiKeyField />
           <button
             onClick={() => void openUrl("https://aistudio.google.com/apikey")}
-            className="text-[13px] text-cobalt hover:underline self-start rounded"
+            className="text-caption text-cobalt hover:text-cobalt-deep hover:underline self-start rounded"
           >
             {t("settings.apiKey.getKey")}
           </button>
@@ -232,17 +271,17 @@ export function SettingsScreen() {
             onOpen={() => void refreshDevices()}
           />
 
-          <div className="flex items-center justify-between border-t border-hairline mt-1 pt-3">
-            <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+            <div className="flex items-center gap-2.5 min-w-0">
               <span
-                className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${
-                  cablePresent ? "bg-ok/12 text-ok" : "bg-danger/12 text-danger"
+                className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${
+                  cablePresent ? "bg-ok-tint text-ok-deep" : "bg-danger-tint text-danger-deep"
                 }`}
               >
                 {cablePresent ? <IconCheck size={13} /> : <IconCross size={13} />}
               </span>
-              <span className="text-[13px] text-ink">
-                VB-CABLE ·{" "}
+              <span className="text-caption text-ink truncate">
+                VB-CABLE{" "}
                 <span className="text-muted">
                   {cablePresent
                     ? t("settings.audio.cableInstalled")
@@ -252,7 +291,7 @@ export function SettingsScreen() {
             </div>
             <button
               onClick={() => setScreen("wizard")}
-              className="lt-press px-3.5 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300"
+              className="lt-press shrink-0 px-3.5 h-9 rounded-pill border border-hairline text-label text-ink hover:border-hairline-strong"
             >
               {t("settings.audio.wizardButton")}
             </button>
@@ -274,8 +313,8 @@ export function SettingsScreen() {
             label={t("settings.translation.duckingEnabled")}
           >
             {settings.duckingEnabled && (
-              <div className="ml-11 flex flex-col gap-1">
-                <label className="text-[13px] text-muted">
+              <div className="ml-11 flex flex-col gap-1.5">
+                <label className="text-label text-muted">
                   {t("settings.translation.duckLevel")}: {formatPercent(settings.duckLevel)}
                 </label>
                 <Slider
@@ -306,8 +345,8 @@ export function SettingsScreen() {
             label={t("settings.translation.mixOriginal")}
           >
             {settings.mixOriginal && (
-              <div className="ml-11 flex flex-col gap-1">
-                <label className="text-[13px] text-muted">
+              <div className="ml-11 flex flex-col gap-1.5">
+                <label className="text-label text-muted">
                   {t("settings.translation.mixGainDb")}: {formatDb(settings.mixGainDb)}
                 </label>
                 <Slider
@@ -342,10 +381,10 @@ export function SettingsScreen() {
 
         {/* ---- Voice messages ---- */}
         <SettingsCard title={t("settings.sections.voice")}>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[13px] text-muted">
-              {t("settings.voice.ttsVoice")}
-            </label>
+          <Field
+            label={t("settings.voice.ttsVoice")}
+            hint={t("settings.voice.ttsVoiceHint")}
+          >
             <SelectRoot
               selectedKey={settings.ttsVoice}
               onSelectionChange={(key) =>
@@ -353,7 +392,7 @@ export function SettingsScreen() {
               }
               aria-label={t("settings.voice.ttsVoice")}
             >
-              <SelectTrigger className="lt-press w-64 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
+              <SelectTrigger className={`${SELECT_TRIGGER} w-64`}>
                 <SelectValue className="flex-1 text-left truncate" />
                 <SelectIndicator />
               </SelectTrigger>
@@ -372,16 +411,12 @@ export function SettingsScreen() {
                 </ListBox>
               </SelectPopover>
             </SelectRoot>
-            <p className="text-[12px] text-muted">
-              {t("settings.voice.ttsVoiceHint")}
-            </p>
-          </div>
+          </Field>
         </SettingsCard>
 
         {/* ---- App ---- */}
         <SettingsCard title={t("settings.sections.app")}>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[13px] text-muted">{t("settings.app.uiLang")}</label>
+          <Field label={t("settings.app.uiLang")}>
             <SelectRoot
               selectedKey={settings.uiLang}
               onSelectionChange={(key) => {
@@ -391,7 +426,7 @@ export function SettingsScreen() {
               }}
               aria-label={t("settings.app.uiLang")}
             >
-              <SelectTrigger className="lt-press w-48 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
+              <SelectTrigger className={`${SELECT_TRIGGER} w-48`}>
                 <SelectValue className="flex-1 text-left" />
                 <SelectIndicator />
               </SelectTrigger>
@@ -406,10 +441,10 @@ export function SettingsScreen() {
                 </ListBox>
               </SelectPopover>
             </SelectRoot>
-          </div>
+          </Field>
 
-          <p className="text-[12px] text-muted font-mono">
-            {t("settings.app.version")}: 0.3.1
+          <p className="text-label text-muted font-mono">
+            {t("settings.app.version")} 0.3.1
           </p>
         </SettingsCard>
       </div>

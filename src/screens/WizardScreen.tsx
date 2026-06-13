@@ -95,20 +95,20 @@ export function WizardScreen() {
   };
 
   return (
-    <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center px-6 py-10 lt-screen-in">
-      <div className="w-full max-w-[560px] flex flex-col gap-6">
+    <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center px-6 py-12 lt-screen-in">
+      <div className="w-full max-w-[560px] flex flex-col gap-8">
         {/* Wordmark */}
         <div className="flex items-center gap-2.5 justify-center">
           <WaveformGlyph active={false} />
-          <span className="font-display text-[13px] font-semibold tracking-[0.14em] text-ink">
+          <span className="font-display text-caption font-semibold tracking-[0.14em] text-ink">
             LIVE&nbsp;TRANSLATOR
           </span>
         </div>
 
         <StepProgress current={stepIdx} />
 
-        <div className="bg-surface border border-hairline rounded-card lt-card p-6 flex flex-col gap-5">
-          <h2 className="font-display text-[18px] font-semibold tracking-tight text-ink">
+        <div className="bg-surface border border-hairline rounded-card lt-card p-7 flex flex-col gap-6">
+          <h2 className="font-display text-h2 font-semibold tracking-tight text-ink">
             {stepTitles[step]}
           </h2>
 
@@ -134,11 +134,11 @@ export function WizardScreen() {
           )}
 
           {/* ---- Navigation ---- */}
-          <div className="flex items-center justify-between pt-2 border-t border-hairline">
+          <div className="flex items-center justify-between pt-5 border-t border-hairline">
             <button
               onClick={goBack}
               disabled={stepIdx === 0}
-              className="lt-press px-4 h-10 rounded-pill border border-hairline text-[13px] text-ink hover:border-stone-300 disabled:opacity-40"
+              className="lt-press px-4 h-10 rounded-pill border border-hairline text-caption text-ink hover:border-hairline-strong disabled:opacity-40 disabled:hover:border-hairline"
             >
               {t("common.back")}
             </button>
@@ -147,7 +147,7 @@ export function WizardScreen() {
               <button
                 onClick={() => void finish()}
                 disabled={finishing}
-                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
+                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-caption font-medium disabled:opacity-50 inline-flex items-center gap-2"
               >
                 {finishing && <Spinner size="sm" />}
                 {finishing ? t("common.loading") : t("wizard.test.allWorks")}
@@ -156,7 +156,7 @@ export function WizardScreen() {
               <button
                 onClick={goNext}
                 disabled={!canAdvance}
-                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-40 disabled:hover:bg-cobalt"
+                className="lt-press px-5 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-caption font-medium disabled:opacity-40 disabled:hover:bg-cobalt"
               >
                 {t("common.next")}
               </button>
@@ -195,22 +195,22 @@ function StepProgress({ current }: { current: number }) {
         const active = i === current;
         return (
           <div key={label} className="flex items-start flex-1 min-w-0">
-            <div className="flex flex-col items-center gap-1.5 shrink-0">
+            <div className="flex flex-col items-center gap-2 shrink-0">
               <div
                 key={`${i}-${active}`}
-                className={`flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-mono font-medium transition-colors ${
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-label font-mono font-medium transition-colors ${
                   active
                     ? "bg-cobalt text-white lt-step-pulse"
                     : done
                       ? "bg-cobalt text-white"
-                      : "bg-stone-100 text-muted border border-hairline"
+                      : "bg-surface-2 text-muted border border-hairline"
                 }`}
               >
-                {done ? <IconCheck size={14} /> : i + 1}
+                {done ? <IconCheck size={15} /> : i + 1}
               </div>
               <span
-                className={`text-[11px] text-center truncate max-w-16 ${
-                  active ? "text-ink font-medium" : "text-stone-500"
+                className={`text-label text-center truncate max-w-16 ${
+                  active ? "text-ink font-medium" : "text-muted"
                 }`}
               >
                 {label}
@@ -218,7 +218,7 @@ function StepProgress({ current }: { current: number }) {
             </div>
             {i < labels.length - 1 && (
               <div
-                className={`h-[2px] flex-1 rounded-full mt-3.5 mx-1 ${
+                className={`h-[2px] flex-1 rounded-full mt-4 mx-2 transition-colors ${
                   done ? "bg-cobalt" : "bg-hairline"
                 }`}
               />
@@ -237,11 +237,11 @@ function StepProgress({ current }: { current: number }) {
 function StepKey({ keyValid, t }: { keyValid: boolean; t: (k: string) => string }) {
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.key.desc")}</p>
+      <p className="text-body text-ink-2 leading-relaxed">{t("wizard.key.desc")}</p>
       <ApiKeyField />
       <button
         onClick={() => void openUrl(AI_STUDIO_URL)}
-        className="text-[13px] text-cobalt hover:underline self-start"
+        className="text-caption text-cobalt hover:underline self-start rounded"
       >
         {t("wizard.key.getKey")}
       </button>
@@ -327,7 +327,7 @@ function StepCable({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.cable.desc")}</p>
+      <p className="text-body text-ink-2 leading-relaxed">{t("wizard.cable.desc")}</p>
 
       {cablePresent ? (
         <Banner
@@ -337,14 +337,14 @@ function StepCable({
         />
       ) : (
         <div className="flex flex-col gap-3">
-          <span className="inline-flex items-center self-start h-6 px-2.5 rounded-pill bg-danger/10 text-danger text-[11px] font-medium">
+          <span className="inline-flex items-center self-start h-7 px-3 rounded-pill bg-danger/10 text-danger-deep text-label font-medium">
             {t("wizard.cable.notFound")}
           </span>
 
           <button
             onClick={() => void handleInstall()}
             disabled={installing}
-            className="lt-press self-start px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
+            className="lt-press self-start px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-caption font-medium disabled:opacity-50 inline-flex items-center gap-2"
           >
             {installing ? (
               <>
@@ -357,7 +357,7 @@ function StepCable({
           </button>
 
           {installing && (
-            <p className="text-[12px] text-muted">{t("wizard.cable.installingHint")}</p>
+            <p className="text-caption text-muted">{t("wizard.cable.installingHint")}</p>
           )}
 
           {errKey && (
@@ -407,7 +407,7 @@ function StepDevices({ t }: { t: (k: string) => string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[13px] text-muted leading-relaxed">{t("wizard.devices.desc")}</p>
+      <p className="text-body text-ink-2 leading-relaxed">{t("wizard.devices.desc")}</p>
       <DeviceSelect
         value={settings.micId}
         onChange={(v) => void patchSettings({ micId: v })}
@@ -488,22 +488,22 @@ function StepTest({
     return t("live.sessionOff");
   }
   function statusTone(): string {
-    if (phase === "running") return "bg-ok/10 text-ok";
+    if (phase === "running") return "bg-ok/10 text-ok-deep";
     if (phase === "connecting" || phase === "reconnecting")
-      return "bg-warn/10 text-[#8a5d0a]";
-    if (phase === "error") return "bg-danger/10 text-danger";
-    return "bg-stone-100 text-muted";
+      return "bg-warn/10 text-warn-deep";
+    if (phase === "error") return "bg-danger/10 text-danger-deep";
+    return "bg-surface-2 text-muted";
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[13px] text-ink leading-relaxed">{t("wizard.test.instruction")}</p>
+      <p className="text-body text-ink leading-relaxed">{t("wizard.test.instruction")}</p>
 
       <div className="flex items-center gap-3">
         {isRunning ? (
           <button
             onClick={() => void stopLive()}
-            className="lt-press px-4 h-10 rounded-pill border border-danger/50 text-danger hover:bg-danger/5 text-[13px] font-medium"
+            className="lt-press px-4 h-10 rounded-pill border border-danger/40 text-danger-deep hover:bg-danger/5 text-caption font-medium"
           >
             {t("wizard.test.stop")}
           </button>
@@ -511,14 +511,14 @@ function StepTest({
           <button
             onClick={() => void handleStart()}
             disabled={starting}
-            className="lt-press px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
+            className="lt-press px-4 h-10 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white text-caption font-medium disabled:opacity-50 inline-flex items-center gap-2"
           >
             {starting && <Spinner size="sm" />}
             {starting ? t("common.loading") : t("wizard.test.start")}
           </button>
         )}
         <span
-          className={`inline-flex items-center h-6 px-2.5 rounded-pill text-[11px] font-medium ${statusTone()}`}
+          className={`inline-flex items-center h-7 px-3 rounded-pill text-label font-medium ${statusTone()}`}
         >
           {statusLabel()}
         </span>
@@ -528,10 +528,10 @@ function StepTest({
         <TranscriptFeed lines={transcript} />
       </div>
 
-      <div className="rounded-card border border-hairline bg-cobalt-tint/40 p-4 flex flex-col gap-1.5">
-        <h3 className="text-[13px] font-semibold text-ink">{t("wizard.test.zoomHeading")}</h3>
-        <p className="text-[13px] text-muted leading-relaxed">{t("wizard.test.zoomBody")}</p>
-        <p className="text-[12px] text-muted">{t("wizard.test.zoomNote")}</p>
+      <div className="rounded-card bg-cobalt-tint p-4 flex flex-col gap-1.5">
+        <h3 className="text-caption font-semibold text-cobalt-deep">{t("wizard.test.zoomHeading")}</h3>
+        <p className="text-caption text-ink-2 leading-relaxed">{t("wizard.test.zoomBody")}</p>
+        <p className="text-label text-ink-2">{t("wizard.test.zoomNote")}</p>
       </div>
     </div>
   );

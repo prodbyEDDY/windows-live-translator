@@ -18,6 +18,41 @@ function getDragIconPath(): Promise<string | null> {
   return dragIconPromise;
 }
 
+/** Copy glyph — inline SVG (replaces the ⎘ unicode glyph). */
+function IconCopy({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M5 15.5A1.5 1.5 0 0 1 3.5 14V5A1.5 1.5 0 0 1 5 3.5h9A1.5 1.5 0 0 1 15.5 5" />
+    </svg>
+  );
+}
+
+/** Filled play triangle — inline SVG (replaces the ▶ unicode glyph). */
+function IconPlay({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M8 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 8 5.5Z" />
+    </svg>
+  );
+}
+
 interface VoiceCardProps {
   record: VoiceRecord;
 }
@@ -48,7 +83,9 @@ export function VoiceCard({ record }: VoiceCardProps) {
     };
   }, []);
 
-  // «Собеседник» (in) = tangerine, «Вы» (out) = cobalt.
+  // Direction is read from a quiet neutral chip + the kind label, never a hue.
+  // The accent only tints the functional progress track (cobalt for «Вы»/out,
+  // slate for the peer/in role — both neutral, no second hue introduced).
   const isIn = record.kind === "in";
   const accent = isIn ? "var(--color-tangerine)" : "var(--color-cobalt)";
   const kindLabel = isIn ? t("voice.kindIn") : t("voice.kindOut");
@@ -149,30 +186,20 @@ export function VoiceCard({ record }: VoiceCardProps) {
       : "text-muted";
 
   return (
-    <div
-      className="relative bg-surface border border-hairline rounded-card lt-card lt-card-hover p-4 pl-5 flex flex-col gap-3 overflow-hidden"
-    >
-      <span
-        className="absolute left-0 top-0 bottom-0 w-[3px]"
-        style={{ background: accent }}
-      />
-
-      {/* ---- Header ---- */}
+    <div className="bg-surface border border-hairline rounded-card lt-card lt-card-hover p-5 flex flex-col gap-5">
+      {/* ---- Header: direction chip + time, status on the right ---- */}
       <div className="flex items-center gap-2.5">
-        <span
-          className="text-[13px] font-semibold"
-          style={{ color: accent }}
-        >
+        <span className="inline-flex items-center h-6 px-2.5 rounded-pill bg-surface-2 text-caption font-medium text-ink-2">
           {kindLabel}
         </span>
-        <span className="font-mono text-[11px] text-muted">{createdAt}</span>
+        <span className="font-mono text-code text-muted tabular-nums">{createdAt}</span>
         <div className="ml-auto flex items-center gap-3">
           {/* Inline progress line: label + thin 3-step track */}
           {errMsg ? (
             <Tooltip>
               <TooltipTrigger>
                 <span
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
+                  className={`inline-flex items-center gap-1.5 text-label font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
                 >
                   {stageName}
                 </span>
@@ -182,7 +209,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
           ) : (
             <span className="inline-flex items-center gap-2">
               <span
-                className={`text-[11px] font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
+                className={`text-label font-medium ${stageColor} ${isProcessing ? "lt-pulse-dot" : ""}`}
               >
                 {stageName}
               </span>
@@ -192,7 +219,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
           {errMsg && (
             <button
               onClick={() => void handleRetry()}
-              className="lt-press px-3 h-6 rounded-pill text-[11px] font-medium border border-hairline text-ink hover:border-stone-300"
+              className="lt-press px-3 h-7 rounded-pill text-label font-medium border border-hairline text-ink hover:border-hairline-strong"
             >
               {t("voice.retry")}
             </button>
@@ -200,74 +227,75 @@ export function VoiceCard({ record }: VoiceCardProps) {
         </div>
       </div>
 
-      {/* ---- Transcript ---- */}
+      {/* ---- Original transcript ---- */}
       {record.transcript && (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+            <span className="text-label font-medium text-muted">
               {t("voice.originalLabel")}
               {record.sourceLang ? ` · ${record.sourceLang.toUpperCase()}` : ""}
             </span>
-            <button
+            <CopyButton
+              copied={copiedOriginal}
               onClick={() => void handleCopy(record.transcript!, "original")}
-              className="text-[11px] text-cobalt hover:underline ml-auto"
-              aria-label={t("voice.copyOriginal")}
-            >
-              {copiedOriginal ? t("voice.copied") : "⎘"}
-            </button>
+              ariaLabel={t("voice.copyOriginal")}
+              copiedLabel={t("voice.copied")}
+            />
           </div>
-          <p className="text-[13px] text-muted leading-relaxed">{record.transcript}</p>
+          <p className="text-body text-ink-2 leading-relaxed">{record.transcript}</p>
         </div>
       )}
 
       {/* ---- Translation ---- */}
       {record.translation && (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink">
+            <span className="text-label font-medium text-ink-2">
               {t("voice.translationLabel")}
             </span>
-            <button
+            <CopyButton
+              copied={copiedTranslation}
               onClick={() => void handleCopy(record.translation!, "translation")}
-              className="text-[11px] text-cobalt hover:underline ml-auto"
-              aria-label={t("voice.copyTranslation")}
-            >
-              {copiedTranslation ? t("voice.copied") : "⎘"}
-            </button>
+              ariaLabel={t("voice.copyTranslation")}
+              copiedLabel={t("voice.copied")}
+            />
           </div>
-          <p className="text-[14px] text-ink leading-relaxed font-medium">
+          <p className="text-lead text-ink leading-relaxed font-medium">
             {record.translation}
           </p>
         </div>
       )}
 
       {/* ---- Audio players (lazy: mount real <audio> only on first play) ---- */}
-      {sourceUrl && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted">{kindLabel}</span>
-          <LazyAudio src={sourceUrl} label={kindLabel} playLabel={t("voice.play")} />
-        </div>
-      )}
-      {translatedUrl && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted">{t("voice.translationLabel")}</span>
-          <LazyAudio
-            src={translatedUrl}
-            label={t("voice.translationLabel")}
-            playLabel={t("voice.play")}
-          />
+      {(sourceUrl || translatedUrl) && (
+        <div className="flex flex-col gap-2.5">
+          {sourceUrl && (
+            <LazyAudio
+              src={sourceUrl}
+              label={t("voice.originalLabel")}
+              playLabel={t("voice.play")}
+            />
+          )}
+          {translatedUrl && (
+            <LazyAudio
+              src={translatedUrl}
+              label={t("voice.translationLabel")}
+              playLabel={t("voice.play")}
+              primary
+            />
+          )}
         </div>
       )}
 
       {/* ---- Out + done: drag handle (primary affordance) + save ---- */}
       {record.kind === "out" && isDone && record.translatedAudioPath && (
-        <div className="flex flex-col gap-1.5 pt-3 border-t border-hairline">
+        <div className="flex flex-col gap-2 pt-4 border-t border-hairline">
           <div className="flex items-center gap-2 flex-wrap">
             <div
               role="button"
               tabIndex={0}
               aria-label={t("voice.dragHandle").replace("⠿ ", "")}
-              className="lt-card lt-card-hover group flex items-center gap-2 pl-2.5 pr-3.5 h-9 rounded-pill border border-dashed border-cobalt/40 bg-cobalt-tint/50 text-[12px] font-medium text-cobalt-deep cursor-grab active:cursor-grabbing select-none focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
+              className="lt-card lt-card-hover group flex items-center gap-2 pl-3 pr-4 h-10 rounded-pill border border-dashed border-cobalt/45 bg-cobalt-tint text-caption font-medium text-cobalt-deep cursor-grab active:cursor-grabbing select-none focus-visible:outline-2 focus-visible:outline-cobalt focus-visible:outline-offset-2"
               onMouseDown={() => void handleDragOut()}
               onDragStart={(e) => {
                 e.preventDefault();
@@ -281,51 +309,74 @@ export function VoiceCard({ record }: VoiceCardProps) {
               }}
               title={t("voice.dragHandle")}
             >
-              <IconGrip size={15} className="text-cobalt" aria-hidden="true" />
+              <IconGrip size={16} className="text-cobalt" aria-hidden="true" />
               <span>{t("voice.dragHandle").replace("⠿ ", "")}</span>
             </div>
             <button
               onClick={() => void handleSaveAs()}
-              className="lt-press inline-flex items-center gap-1.5 px-3 h-9 rounded-pill border border-hairline text-[12px] text-ink hover:border-stone-300"
+              className="lt-press inline-flex items-center gap-1.5 px-3.5 h-10 rounded-pill border border-hairline text-caption text-ink hover:border-hairline-strong"
             >
-              <IconDownload size={14} />
+              <IconDownload size={15} />
               {t("voice.saveAs")}
             </button>
           </div>
-          <p className="text-[11px] text-muted italic">{t("voice.dragDisclaimer")}</p>
+          <p className="text-label text-muted">{t("voice.dragDisclaimer")}</p>
         </div>
       )}
     </div>
   );
 }
 
+/** Quiet copy button: icon by default, swaps to a "Copied" confirmation. */
+function CopyButton({
+  copied,
+  onClick,
+  ariaLabel,
+  copiedLabel,
+}: {
+  copied: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  copiedLabel: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="lt-press ml-auto inline-flex items-center gap-1 h-6 px-1.5 rounded-input text-label text-muted hover:text-cobalt hover:bg-cobalt-tint"
+    >
+      {copied ? (
+        <span className="text-ok font-medium">{copiedLabel}</span>
+      ) : (
+        <IconCopy size={14} />
+      )}
+    </button>
+  );
+}
+
 /**
- * Lazy audio gate. Shows a small play-pill (▶ + label) and only mounts the real
- * <audio> element after the first click — so a long history list doesn't eagerly
- * create dozens of media elements (and fetch their metadata) up front. Layout
- * stays stable: the pill occupies the same 36px-tall row the player will.
+ * Lazy audio gate. Shows a clear play control (filled triangle + label) and only
+ * mounts the real <audio> element after the first click — so a long history list
+ * doesn't eagerly create dozens of media elements (and fetch their metadata) up
+ * front. Layout stays stable: the control occupies the same 40px-tall row the
+ * player will. `primary` marks the translated-audio control (cobalt) so the
+ * useful output reads as the obvious action.
  */
 function LazyAudio({
   src,
   label,
   playLabel,
+  primary = false,
 }: {
   src: string;
   label: string;
   playLabel: string;
+  primary?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
 
   if (mounted) {
-    return (
-      <audio
-        controls
-        autoPlay
-        preload="none"
-        src={src}
-        className="w-full max-w-md h-9"
-      />
-    );
+    return <audio controls autoPlay preload="none" src={src} className="w-full h-10" />;
   }
 
   return (
@@ -333,12 +384,23 @@ function LazyAudio({
       type="button"
       onClick={() => setMounted(true)}
       aria-label={`${playLabel}: ${label}`}
-      className="lt-press inline-flex items-center gap-2 self-start pl-2.5 pr-3.5 h-9 rounded-pill border border-hairline bg-surface text-[12px] text-ink hover:border-stone-300"
+      className={`lt-press group flex w-full items-center gap-3 h-10 px-3 rounded-input border text-caption font-medium ${
+        primary
+          ? "border-cobalt/30 bg-cobalt-tint text-cobalt-deep hover:border-cobalt/50"
+          : "border-hairline bg-surface text-ink-2 hover:border-hairline-strong"
+      }`}
     >
-      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cobalt-tint text-cobalt text-[10px] leading-none">
-        ▶
+      <span
+        className={`inline-flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${
+          primary ? "bg-cobalt text-white" : "bg-surface-2 text-ink-2"
+        }`}
+      >
+        <IconPlay size={12} />
       </span>
-      <span>{playLabel}</span>
+      <span>{label}</span>
+      <span className="ml-auto text-label text-muted group-hover:text-current">
+        {playLabel}
+      </span>
     </button>
   );
 }

@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app";
 import { langLabel } from "../lib/languages";
+import { IconSwap } from "./Icons";
 import type { TranscriptLine } from "../lib/transcript";
 
 interface TranscriptFeedProps {
@@ -43,7 +44,7 @@ function TranscriptFeedImpl({ lines }: TranscriptFeedProps) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto flex flex-col px-5 py-4"
+        className="absolute inset-0 overflow-y-auto flex flex-col px-6 py-5"
       >
         {lines.map((line, i) => (
           <TranscriptBubble
@@ -59,7 +60,7 @@ function TranscriptFeedImpl({ lines }: TranscriptFeedProps) {
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10">
           <button
             onClick={scrollToBottom}
-            className="lt-press lt-card px-3.5 h-8 rounded-pill bg-surface border border-hairline text-[12px] text-ink hover:border-stone-300"
+            className="lt-press lt-card px-3.5 h-8 rounded-pill bg-surface border border-hairline text-caption text-ink hover:border-hairline-strong"
           >
             {t("live.scrollDown")}
           </button>
@@ -84,22 +85,27 @@ function TranscriptEmpty() {
     t("live.empty.step3"),
   ];
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-5 text-center select-none px-6">
-      <span className="font-display text-[72px] leading-none text-stone-200">⇄</span>
-      <p className="text-[13px] text-muted max-w-xs leading-relaxed">
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center select-none px-6">
+      <span
+        aria-hidden="true"
+        className="inline-flex items-center justify-center w-16 h-16 rounded-bubble bg-surface-2 text-muted"
+      >
+        <IconSwap size={28} />
+      </span>
+      <p className="text-lead text-ink-2 max-w-sm leading-relaxed text-balance">
         {t("live.transcriptEmpty")}
       </p>
-      <div className="flex items-center gap-2 text-[11px] text-muted">
+      <div className="flex items-center gap-3 text-caption text-muted">
         {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-stone-100 border border-hairline font-mono text-[9px] text-stone-400">
+          <div key={i} className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface-2 border border-hairline font-mono text-label text-ink-2 tabular-nums">
                 {i + 1}
               </span>
               <span>{step}</span>
             </span>
             {i < steps.length - 1 && (
-              <span className="text-stone-300">→</span>
+              <span aria-hidden="true" className="w-4 h-px bg-hairline-strong" />
             )}
           </div>
         ))}
@@ -119,53 +125,58 @@ function TranscriptBubble({
   const { t } = useTranslation();
   const isOut = line.direction === "out";
 
-  // Direction routing label: «ВЫ → EN» / «СОБЕСЕДНИК → RU»
+  // Quiet, sentence-case caption: "You · EN" / "Peer · RU". Direction is read
+  // from alignment + bubble fill + an 8px dot — not a colored side-stripe.
   const targetLang = isOut ? settings?.peerLang : settings?.myLang;
   const who = isOut ? t("live.sessionOutLabel") : t("live.sessionInLabel");
-  const routeTarget = targetLang ? langLabel(targetLang) : "—";
+  const routeTarget = targetLang ? langLabel(targetLang) : null;
 
-  const accent = isOut ? "var(--color-cobalt)" : "var(--color-tangerine)";
-  // Barely-there wash (~40% lighter than the *-tint tokens).
-  const bg = isOut ? "rgb(30 91 215 / 0.045)" : "rgb(226 98 14 / 0.05)";
-  const labelColor = isOut ? "text-cobalt-deep" : "text-tangerine-deep";
+  // You → cobalt-tint (the single accent); Peer → neutral slate fill.
+  const bubbleBg = isOut ? "bg-cobalt-tint" : "bg-surface-2";
+  const dotColor = isOut ? "bg-cobalt" : "bg-tangerine";
+  const typingColor = isOut ? "text-cobalt" : "text-muted";
 
   const primary = line.translated || line.original;
   const hasSub = !!(line.translated && line.original);
   const isTyping = !line.closed;
 
-  // 14px radius, with the corner nearest the speaker squared to 4px.
+  // Soft bubble radius, with the corner nearest the speaker squared.
   const radius = isOut
-    ? "14px 14px 4px 14px" // out → right side, bottom-right squared
-    : "14px 14px 14px 4px"; // in → left side, bottom-left squared
+    ? "16px 16px 4px 16px" // out → right side, bottom-right squared
+    : "16px 16px 16px 4px"; // in → left side, bottom-left squared
 
-  // Vertical rhythm: 10px within a direction, 18px across a direction change.
+  // Vertical rhythm: 12px within a direction, 22px across a direction change.
   const gapTop =
-    prevDirection == null ? 0 : prevDirection === line.direction ? 10 : 18;
+    prevDirection == null ? 0 : prevDirection === line.direction ? 12 : 22;
 
   return (
     <div
       className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}
       style={{ marginTop: gapTop }}
     >
-      <div
-        className="lt-bubble-in max-w-[72%] pl-3.5 pr-4 py-2.5"
-        style={{ background: bg, borderRadius: radius }}
+      <span
+        className={`flex items-center gap-1.5 text-label text-muted mb-1.5 px-1 ${
+          isOut ? "flex-row-reverse" : ""
+        }`}
       >
         <span
-          className={`flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.1em] mb-1.5 font-mono ${labelColor}`}
-        >
-          <span
-            className="inline-block w-[3px] h-[10px] rounded-full"
-            style={{ background: accent }}
-          />
-          {who} → {routeTarget}
-        </span>
-        <p className="text-[15px] leading-[22px] font-medium text-ink">
+          aria-hidden="true"
+          className={`inline-block w-2 h-2 rounded-full ${dotColor}`}
+        />
+        {who}
+        {routeTarget && (
+          <span className="text-muted">· {routeTarget}</span>
+        )}
+      </span>
+      <div
+        className={`lt-bubble-in max-w-[72%] px-4 py-3 ${bubbleBg}`}
+        style={{ borderRadius: radius }}
+      >
+        <p className="text-lead leading-relaxed text-ink">
           {primary}
           {isTyping && (
             <span
-              className="lt-typing align-middle ml-1.5"
-              style={{ color: accent }}
+              className={`lt-typing align-middle ml-1.5 ${typingColor}`}
               aria-hidden="true"
             >
               <span />
@@ -175,7 +186,7 @@ function TranscriptBubble({
           )}
         </p>
         {hasSub && (
-          <p className="text-[12.5px] leading-[18px] text-muted mt-1">
+          <p className="text-caption leading-snug text-ink-2 mt-1.5">
             {line.original}
           </p>
         )}

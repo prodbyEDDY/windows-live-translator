@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
 import { Banner } from "../components/Banner";
-import { IconMic, IconStopSquare, IconDownload } from "../components/Icons";
+import { IconMic, IconStopSquare, IconDownload, IconMicMessage } from "../components/Icons";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
 
@@ -180,31 +180,29 @@ export function VoiceScreen() {
       {/* ---- Drop overlay ---- */}
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-paper/80 backdrop-blur-[2px] pointer-events-none">
-          <div className="flex flex-col items-center gap-3 rounded-card border-2 border-dashed border-cobalt bg-surface/90 px-12 py-9 shadow-studio">
-            <span aria-hidden="true" className="font-display text-[56px] leading-none text-cobalt">
-              <IconDownload size={56} />
-            </span>
-            <p className="font-display text-[18px] font-semibold text-cobalt-deep">
+          <div className="flex flex-col items-center gap-4 rounded-card border-2 border-dashed border-cobalt bg-surface/95 px-14 py-10">
+            <IconDownload size={48} className="text-cobalt" aria-hidden="true" />
+            <p className="font-display text-h2 font-semibold text-cobalt-deep">
               {t("voice.dropOverlay")}
             </p>
           </div>
         </div>
       )}
 
-      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-6 flex flex-col gap-5 lt-screen-in">
+      <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-7 flex flex-col gap-6 lt-screen-in">
         {/* ---- Header row ---- */}
-        <div className="flex items-center justify-between gap-4 shrink-0 min-h-9">
-          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none">
+        <div className="flex items-center justify-between gap-4 shrink-0 min-h-14">
+          <h1 className="font-display text-h1 font-semibold tracking-tight text-ink leading-none">
             {t("voice.title")}
           </h1>
 
           <div className="flex items-center gap-3">
             {isRecording && (
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[13px] text-ink tabular-nums">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-emphasis text-ink tabular-nums">
                   {formatRecordingTime(recordingSecs)}
                 </span>
-                <span className="text-[11px] text-muted">{t("voice.recordCap")}</span>
+                <span className="text-label text-muted">{t("voice.recordCap")}</span>
               </div>
             )}
             {/* Record FAB */}
@@ -248,20 +246,23 @@ export function VoiceScreen() {
         <div
           role="region"
           aria-label={t("voice.dropHint")}
-          className="flex items-center justify-center gap-2 rounded-card border border-dashed border-stone-300 py-2.5 text-[12px] text-muted shrink-0"
+          className="flex items-center justify-center gap-2 rounded-card border border-dashed border-hairline-strong py-3 text-caption text-muted shrink-0"
         >
-          <IconDownload size={14} aria-hidden="true" />
+          <IconDownload size={15} aria-hidden="true" />
           {t("voice.dropHint")}
         </div>
 
         {/* ---- Card list ---- */}
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 -mx-1 px-1">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 -mx-1 px-1">
           {voiceMessages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
-              <span className="font-display text-[72px] leading-none text-stone-200">
-                ◎
+            <div className="flex-1 flex flex-col items-center justify-center gap-5 text-center px-6">
+              <span
+                aria-hidden="true"
+                className="flex items-center justify-center w-20 h-20 rounded-card bg-surface-2 text-muted"
+              >
+                <IconMicMessage size={36} />
               </span>
-              <p className="text-[13px] text-muted whitespace-pre-line max-w-sm leading-relaxed">
+              <p className="text-caption text-muted whitespace-pre-line max-w-sm leading-relaxed text-pretty">
                 {t("voice.emptyHint")}
               </p>
             </div>

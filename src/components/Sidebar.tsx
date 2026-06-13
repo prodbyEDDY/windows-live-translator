@@ -38,9 +38,9 @@ export function Sidebar() {
   return (
     <nav
       aria-label={t("live.navLabel")}
-      className="flex flex-col w-56 shrink-0 bg-paper border-r border-hairline py-3"
+      className="flex flex-col w-56 shrink-0 bg-paper border-r border-hairline py-4"
     >
-      <div className="flex-1 flex flex-col gap-0.5 px-2">
+      <div className="flex-1 flex flex-col gap-1 px-3">
         {NAV_ITEMS.map((item) => {
           const active = screen === item.id;
           const Icon = item.icon;
@@ -50,16 +50,16 @@ export function Sidebar() {
               onClick={() => setScreen(item.id)}
               aria-current={active ? "page" : undefined}
               className={[
-                "lt-press group relative flex items-center gap-3 h-10 px-3 rounded-lg text-[14px] font-medium w-full text-left",
+                "lt-press group flex items-center gap-3 h-10 px-3 rounded-input text-body font-medium w-full text-left",
                 active
                   ? "bg-cobalt-tint text-cobalt-deep"
-                  : "text-muted hover:bg-stone-100 hover:text-ink",
+                  : "text-muted hover:bg-surface-2 hover:text-ink",
               ].join(" ")}
             >
-              {active && (
-                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-cobalt" />
-              )}
-              <Icon size={18} className={active ? "text-cobalt" : undefined} />
+              <Icon
+                size={18}
+                className={active ? "text-cobalt" : "text-muted group-hover:text-ink-2"}
+              />
               <span>{t(item.labelKey)}</span>
             </button>
           );
@@ -67,7 +67,7 @@ export function Sidebar() {
       </div>
 
       {/* ---- Bottom status badges + version ---- */}
-      <div className="px-3 pt-3 mt-2 border-t border-hairline flex flex-col gap-1.5">
+      <div className="px-3 pt-4 mt-2 border-t border-hairline flex flex-col gap-2">
         <StatusBadge
           label="VB-CABLE"
           ok={cablePresent}
@@ -78,7 +78,7 @@ export function Sidebar() {
           ok={keyValid}
           onClick={() => setScreen("settings")}
         />
-        <span className="font-mono text-[11px] text-stone-500 tracking-tight px-1.5 pt-1.5">
+        <span className="font-mono text-code text-muted px-1.5 pt-1">
           v0.3.1
         </span>
       </div>
@@ -99,19 +99,16 @@ function StatusBadge({
   return (
     <button
       onClick={onClick}
-      className="lt-press group flex items-center gap-2 h-8 pl-2.5 pr-2 rounded-lg border border-hairline bg-surface text-[12px] text-muted hover:border-stone-300 hover:text-ink w-full text-left"
+      className="lt-press group flex items-center gap-2.5 h-8 px-2.5 rounded-input border border-hairline bg-surface text-label text-muted hover:border-hairline-strong hover:text-ink w-full text-left"
     >
       <span
-        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0 ${
-          ok ? "bg-ok/15 text-ok" : "bg-danger/15 text-danger"
+        className={`inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
+          ok ? "bg-ok-tint text-ok-deep" : "bg-danger-tint text-danger-deep"
         }`}
       >
-        {ok ? <IconCheck size={9} /> : <IconCross size={9} />}
+        {ok ? <IconCheck size={10} /> : <IconCross size={10} />}
       </span>
-      <span className="font-mono tracking-tight truncate flex-1">{label}</span>
-      <span
-        className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-ok" : "bg-danger"}`}
-      />
+      <span className="font-mono truncate flex-1">{label}</span>
     </button>
   );
 }

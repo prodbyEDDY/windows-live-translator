@@ -24,12 +24,12 @@ function base({ size = 20, ...props }: IconProps) {
 export function IconWaveform(props: IconProps) {
   return (
     <svg {...base(props)}>
-      <path d="M4 12v0" />
+      <path d="M4 11v2" />
       <path d="M7.5 8.5v7" />
       <path d="M11 5v14" />
       <path d="M14.5 8.5v7" />
       <path d="M18 10.5v3" />
-      <path d="M21 12v0" />
+      <path d="M21 11v2" />
     </svg>
   );
 }
@@ -90,6 +90,49 @@ export function IconCross(props: IconProps) {
   return (
     <svg {...base(props)}>
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+/** Info — circled "i". Used by the info Banner tone. */
+export function IconInfo(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h0" />
+    </svg>
+  );
+}
+
+/** Triangle "!" — warning Banner tone. */
+export function IconWarning(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 4.5 21 19.5H3z" />
+      <path d="M12 10v4" />
+      <path d="M12 17h0" />
+    </svg>
+  );
+}
+
+/** Circled "!" — danger / error Banner tone. */
+export function IconAlert(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4.5" />
+      <path d="M12 16h0" />
+    </svg>
+  );
+}
+
+/** Check in a circle — success / ok Banner tone. */
+export function IconCheckCircle(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8.5 12.2 2.4 2.4 4.6-5.2" />
     </svg>
   );
 }

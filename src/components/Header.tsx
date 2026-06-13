@@ -31,11 +31,13 @@ function LangPill({
   tone: "out" | "in";
   disabled?: boolean;
 }) {
+  // Direction is read from alignment + the language code, not a second hue.
+  // The OUT role gets a faint cobalt code; the IN role stays neutral.
   const ring =
     tone === "out"
       ? "border-cobalt/25 hover:border-cobalt/55 focus-within:border-cobalt/55"
-      : "border-tangerine/25 hover:border-tangerine/55 focus-within:border-tangerine/55";
-  const codeColor = tone === "out" ? "text-cobalt" : "text-tangerine";
+      : "border-hairline hover:border-hairline-strong focus-within:border-hairline-strong";
+  const codeColor = tone === "out" ? "text-cobalt" : "text-muted";
   return (
     <SelectRoot
       selectedKey={value}
@@ -44,10 +46,10 @@ function LangPill({
       isDisabled={disabled}
     >
       <SelectTrigger
-        className={`lt-press group inline-flex items-center gap-2 h-9 pl-2.5 pr-3 rounded-pill border bg-surface text-[13px] font-medium text-ink ${ring}`}
+        className={`lt-press group inline-flex items-center gap-2 h-9 pl-2.5 pr-3.5 rounded-pill border bg-surface text-caption font-medium text-ink ${ring}`}
       >
         <span
-          className={`font-mono text-[10px] font-semibold tracking-[0.08em] leading-none ${codeColor}`}
+          className={`font-mono text-label font-semibold leading-none ${codeColor}`}
         >
           {langLabel(value)}
         </span>
@@ -57,7 +59,7 @@ function LangPill({
         <ListBox items={LANGUAGES} className="max-h-72 overflow-y-auto">
           {(lang) => (
             <ListBoxItem key={lang.code} id={lang.code} textValue={lang.autonym}>
-              <span className="font-mono text-[10px] text-muted mr-2">
+              <span className="font-mono text-label text-muted mr-2">
                 {langLabel(lang.code)}
               </span>
               {lang.autonym}
@@ -107,11 +109,12 @@ export function Header() {
   }
 
   return (
-    <header className="relative z-20 flex items-center h-14 pr-5 gap-4 bg-surface border-b border-hairline shadow-[0_1px_2px_rgb(28_25_23_/_0.04)] shrink-0">
-      {/* Wordmark — fixed-width block aligned to the sidebar edge (224px). */}
+    <header className="relative z-20 flex items-center h-14 pr-5 gap-4 bg-surface border-b border-hairline shrink-0">
+      {/* Wordmark — fixed-width block aligned to the sidebar edge (224px). The
+          spaced display caps are the single deliberate brand treatment. */}
       <div className="flex items-center gap-2.5 shrink-0 w-56 px-5 border-r border-hairline self-stretch">
         <WaveformGlyph active={phase === "running"} />
-        <span className="font-display text-[13px] font-semibold tracking-[0.14em] text-ink leading-none">
+        <span className="font-display text-caption font-semibold tracking-[0.12em] text-ink leading-none">
           LIVE&nbsp;TRANSLATOR
         </span>
       </div>
@@ -122,7 +125,7 @@ export function Header() {
         // setup is sent once per connection and cannot be re-targeted live.
         // Disable the controls so the UI never promises a change it can't make.
         <div
-          className="flex-1 flex items-center justify-center gap-2.5"
+          className="flex-1 flex items-center justify-center gap-3"
           title={isRunning ? t("live.langLockedHint") : undefined}
         >
           <LangPill
@@ -157,7 +160,7 @@ export function Header() {
         {isRunning && screen !== "live" && (
           <button
             onClick={() => setScreen("live")}
-            className="lt-press inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-pill bg-ok/10 text-ok text-[11.5px] font-medium hover:bg-ok/15"
+            className="lt-press inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-pill bg-ok-tint text-ok-deep text-label font-medium hover:bg-ok/15"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-ok lt-pulse-dot" />
             {t("live.runningPill")}
@@ -169,7 +172,7 @@ export function Header() {
             <Button
               variant="outline"
               onPress={() => void stopLiveSession()}
-              className="lt-press h-9 px-4 rounded-pill border-danger/50 text-danger hover:bg-danger/5 font-display text-[12px] tracking-[0.04em] inline-flex items-center gap-1.5"
+              className="lt-press h-9 px-4 rounded-pill border-danger/50 text-danger hover:bg-danger/5 font-display text-label inline-flex items-center gap-1.5"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-danger lt-pulse-dot" />
               <IconStopSquare size={14} />
@@ -180,7 +183,7 @@ export function Header() {
               variant="primary"
               isDisabled={starting}
               onPress={() => void startLiveSession()}
-              className="lt-press lt-glow h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-[12px] tracking-[0.04em] disabled:opacity-60 inline-flex items-center gap-1.5"
+              className="lt-press lt-glow h-9 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep text-white font-display text-label disabled:opacity-60 inline-flex items-center gap-1.5"
             >
               {starting && <Spinner size="sm" />}
               {starting ? t("common.loading") : t("common.start")}
@@ -195,7 +198,7 @@ export function Header() {
                   variant="outline"
                   aria-disabled
                   onPress={() => {}}
-                  className="h-9 px-5 rounded-pill border-hairline text-stone-400 font-display text-[12px] tracking-[0.04em] cursor-not-allowed"
+                  className="h-9 px-5 rounded-pill border-hairline text-muted/70 font-display text-label cursor-not-allowed"
                 >
                   {t("common.start")}
                 </Button>
@@ -218,33 +221,33 @@ function SessionStatusChip({
   t: (k: string) => string;
 }) {
   let label = t("live.sessionOff");
-  let dot = "bg-stone-300";
+  let dot = "bg-hairline-strong";
   let text = "text-muted";
-  let bg = "bg-stone-100";
+  let bg = "bg-surface-2";
   let pulse = false;
   if (phase === "running") {
     label = t("live.sessionRunning");
     dot = "bg-ok";
-    text = "text-ok";
-    bg = "bg-[#177e5b]/8";
+    text = "text-ok-deep";
+    bg = "bg-ok-tint";
   } else if (phase === "connecting" || phase === "reconnecting") {
     label =
       phase === "connecting"
         ? t("live.sessionConnecting")
         : t("live.sessionReconnecting");
     dot = "bg-warn";
-    text = "text-warn";
-    bg = "bg-[#b97d10]/8";
+    text = "text-warn-deep";
+    bg = "bg-warn-tint";
     pulse = true;
   } else if (phase === "error") {
     label = t("live.statusError");
     dot = "bg-danger";
-    text = "text-danger";
-    bg = "bg-danger/8";
+    text = "text-danger-deep";
+    bg = "bg-danger-tint";
   }
   return (
     <span
-      className={`inline-flex items-center gap-2 h-9 px-3 rounded-pill text-[11.5px] font-medium ${bg} ${text}`}
+      className={`inline-flex items-center gap-2 h-9 px-3 rounded-pill text-label font-medium ${bg} ${text}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${dot} ${pulse ? "lt-pulse-dot" : ""}`} />
       {label}

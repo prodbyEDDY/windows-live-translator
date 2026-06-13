@@ -12,7 +12,7 @@ export function dbToPercent(db: number): number {
 
 interface DirectionMeterProps {
   db: number;
-  /** "out" = cobalt (you), "in" = tangerine (peer). */
+  /** "out" = cobalt (you), "in" = neutral slate (peer). */
   tone: "out" | "in";
   label: string;
 }
@@ -30,7 +30,7 @@ export function DirectionMeter({ db, tone, label }: DirectionMeterProps) {
   const lit = Math.round((pct / 100) * SEGMENTS);
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="font-mono text-[11px] font-medium text-stone-500 w-8 shrink-0 truncate tabular-nums uppercase tracking-tight">
+      <span className="text-label text-muted w-8 shrink-0 truncate tabular-nums">
         {label}
       </span>
       <div

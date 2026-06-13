@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 
 /**
- * A card-section title: 11px Unbounded uppercase letterspaced muted, preceded
- * by a 16px-wide cobalt rule.
+ * A quiet card-section title: sentence-case, semibold, secondary ink.
+ *
+ * No leading colored rule and no uppercase tracking — those read as the
+ * eyebrow / side-stripe scaffold the design system bans. Hierarchy comes from
+ * weight + ink color, not from a kicker treatment.
  *
  * (The former `ScreenShell` / `Card` wrappers that lived here were unused —
  * every screen manages its own layout — so they were removed. Only this
@@ -10,9 +13,6 @@ import type { ReactNode } from "react";
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2.5 font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-      <span className="inline-block w-4 h-[2px] rounded-full bg-cobalt shrink-0" />
-      {children}
-    </h2>
+    <h2 className="text-label font-semibold text-ink-2">{children}</h2>
   );
 }

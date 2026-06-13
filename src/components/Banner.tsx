@@ -1,5 +1,12 @@
+import type { ComponentType, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
-import { IconCross } from "./Icons";
+import {
+  IconAlert,
+  IconCheckCircle,
+  IconCross,
+  IconInfo,
+  IconWarning,
+} from "./Icons";
 
 type Tone = "warn" | "danger" | "ok" | "info";
 
@@ -11,32 +18,71 @@ interface BannerProps {
   onDismiss?: () => void;
 }
 
-const TONE: Record<Tone, { bar: string; tint: string; title: string }> = {
-  warn: { bar: "bg-warn", tint: "bg-[#b97d10]/[0.04]", title: "text-[#8a5d0a]" },
-  danger: { bar: "bg-danger", tint: "bg-[#c2362b]/[0.04]", title: "text-danger" },
-  ok: { bar: "bg-ok", tint: "bg-[#177e5b]/[0.04]", title: "text-ok" },
-  info: { bar: "bg-cobalt", tint: "bg-cobalt-tint", title: "text-cobalt-deep" },
+type IconProps = SVGProps<SVGSVGElement> & { size?: number };
+
+/**
+ * Per-tone surface: a quiet tint ground, a matching hairline border, a *-deep
+ * ink for the title and leading icon. No side-stripe — tone reads from the
+ * full tinted frame + the leading status icon.
+ */
+const TONE: Record<
+  Tone,
+  { tint: string; border: string; ink: string; Icon: ComponentType<IconProps> }
+> = {
+  info: {
+    tint: "bg-cobalt-tint",
+    border: "border-cobalt/25",
+    ink: "text-cobalt-deep",
+    Icon: IconInfo,
+  },
+  ok: {
+    tint: "bg-ok-tint",
+    border: "border-ok/25",
+    ink: "text-ok-deep",
+    Icon: IconCheckCircle,
+  },
+  warn: {
+    tint: "bg-warn-tint",
+    border: "border-warn/30",
+    ink: "text-warn-deep",
+    Icon: IconWarning,
+  },
+  danger: {
+    tint: "bg-danger-tint",
+    border: "border-danger/25",
+    ink: "text-danger-deep",
+    Icon: IconAlert,
+  },
 };
 
-/** Hairline card with a colored left bar — the restyled Alert. */
+/** Inline alert — tinted card with a leading tone icon (no side-stripe). */
 export function Banner({ tone, title, description, action, onDismiss }: BannerProps) {
   const { t } = useTranslation();
   const c = TONE[tone];
+  const Icon = c.Icon;
   return (
     <div
-      className={`relative flex items-start gap-3 rounded-card border border-hairline ${c.tint} pl-4 pr-3 py-2.5 overflow-hidden`}
+      role="status"
+      aria-live="polite"
+      className={`flex items-start gap-3 rounded-card border ${c.border} ${c.tint} px-3.5 py-3`}
     >
-      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${c.bar}`} />
-      <div className="flex-1 min-w-0">
-        {title && <p className={`text-[13px] font-semibold ${c.title}`}>{title}</p>}
+      <Icon
+        size={18}
+        className={`${c.ink} shrink-0 mt-px`}
+        aria-hidden="true"
+      />
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        {title && (
+          <p className={`text-caption font-semibold ${c.ink}`}>{title}</p>
+        )}
         {description && (
-          <p className="text-[12px] text-muted leading-snug mt-0.5">{description}</p>
+          <p className="text-caption text-ink-2 leading-snug">{description}</p>
         )}
       </div>
       {action && (
         <button
           onClick={action.onClick}
-          className="lt-press shrink-0 px-3 h-7 rounded-pill text-[12px] font-medium text-ink border border-hairline bg-surface hover:border-stone-300"
+          className="lt-press shrink-0 px-3 h-7 rounded-pill text-label font-medium text-ink border border-hairline-strong bg-surface hover:border-ink-2/40"
         >
           {action.label}
         </button>
@@ -45,7 +91,7 @@ export function Banner({ tone, title, description, action, onDismiss }: BannerPr
         <button
           onClick={onDismiss}
           aria-label={t("common.close")}
-          className="shrink-0 text-muted hover:text-ink transition-colors mt-0.5"
+          className="shrink-0 -mr-1 -mt-0.5 p-1 rounded-md text-muted hover:text-ink hover:bg-black/[0.04] transition-colors"
         >
           <IconCross size={15} />
         </button>

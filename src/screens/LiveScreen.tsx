@@ -26,6 +26,7 @@ import { useAppStore } from "../stores/app";
 import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
+import { IconWaveform } from "../components/Icons";
 import { looksLikeHeadphones } from "../lib/echo";
 import { formatDuration } from "../lib/format";
 
@@ -100,7 +101,7 @@ export function LiveScreen() {
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-6 pb-0 flex flex-col gap-4">
         {/* ---- Toolbar: source picker ---- */}
         <div className="flex items-center gap-3 shrink-0 h-9">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted shrink-0">
+          <span className="text-caption text-muted shrink-0">
             {t("live.audioSource")}
           </span>
           <SelectRoot
@@ -127,12 +128,12 @@ export function LiveScreen() {
               if (open) void refreshApps();
             }}
           >
-            <SelectTrigger className="lt-press min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-2.5 pr-3.5 rounded-pill border border-hairline bg-surface text-[13px] text-ink hover:border-stone-300">
+            <SelectTrigger className="lt-press min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-2.5 pr-3.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong">
               <span
                 aria-hidden="true"
-                className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md bg-cobalt-tint text-cobalt text-[11px]"
+                className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md bg-cobalt-tint text-cobalt"
               >
-                ♪
+                <IconWaveform size={15} />
               </span>
               <SelectValue className="flex-1 min-w-0 text-left truncate" />
               <SelectIndicator className="shrink-0" />
@@ -153,7 +154,7 @@ export function LiveScreen() {
                     isDisabled
                     textValue={t("live.noAppsHint")}
                   >
-                    <span className="text-muted text-[12px]">
+                    <span className="text-muted text-caption">
                       {t("live.noAppsHint")}
                     </span>
                   </ListBoxItem>
@@ -164,9 +165,16 @@ export function LiveScreen() {
                       id={String(app.pid)}
                       textValue={`${app.name} (${app.pid})`}
                     >
-                      {app.active ? "🔊 " : ""}
-                      {app.name}{" "}
-                      <span className="font-mono text-muted">({app.pid})</span>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                            app.active ? "bg-cobalt" : "bg-hairline-strong"
+                          }`}
+                        />
+                        <span>{app.name}</span>
+                        <span className="font-mono text-muted">({app.pid})</span>
+                      </span>
                     </ListBoxItem>
                   ))
                 )}
@@ -230,7 +238,7 @@ export function LiveScreen() {
                 <AlertDialogTrigger>
                   <button
                     onClick={() => setClearDialogOpen(true)}
-                    className="lt-press px-3 h-7 rounded-pill text-[12px] text-muted hover:text-ink hover:bg-stone-100"
+                    className="lt-press px-3 h-7 rounded-pill text-caption text-muted hover:text-ink hover:bg-surface-2"
                   >
                     {t("live.clearTranscript")}
                   </button>
@@ -244,7 +252,7 @@ export function LiveScreen() {
                         </AlertDialogHeading>
                       </AlertDialogHeader>
                       <AlertDialogBody>
-                        <p className="text-sm text-muted">
+                        <p className="text-body text-ink-2">
                           {t("live.confirmClearBody")}
                         </p>
                       </AlertDialogBody>
@@ -337,13 +345,13 @@ function TimeCostZone() {
   const durationSec = useAppStore((s) => s.durationSec);
   return (
     <div className="flex items-center gap-2.5">
-      <span className="font-mono text-[12px] text-ink tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
+      <span className="font-mono text-label text-ink tabular-nums px-2 py-1 rounded-md bg-surface-2">
         {cost != null ? formatDuration(cost.seconds) : formatDuration(durationSec)}
       </span>
       {cost != null && (
         <Tooltip>
           <TooltipTrigger>
-            <span className="font-mono text-[12px] text-muted tabular-nums px-2 py-0.5 rounded-md bg-stone-100">
+            <span className="font-mono text-label text-muted tabular-nums px-2 py-1 rounded-md bg-surface-2">
               ~${cost.estimatedUsd.toFixed(2)}
             </span>
           </TooltipTrigger>
@@ -379,14 +387,14 @@ function DirectionChip({
   } else if (isReconnecting) {
     cls = `border ${accentBorder} ${accentText} ${accentTint} lt-pulse-dot`;
   } else if (isError) {
-    cls = "border border-danger/50 text-danger bg-danger/5";
+    cls = "border border-danger/50 text-danger bg-danger-tint";
   } else {
-    cls = "border border-hairline text-muted bg-stone-50";
+    cls = "border border-hairline text-muted bg-surface-2";
   }
 
   const chip = (
     <span
-      className={`inline-flex items-center h-7 px-3 rounded-pill text-[11px] font-medium ${cls}`}
+      className={`inline-flex items-center h-7 px-3 rounded-pill text-label font-medium ${cls}`}
     >
       {label}
     </span>
