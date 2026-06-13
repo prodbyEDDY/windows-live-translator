@@ -34,6 +34,7 @@
       "apiKey": "API Key",
       "audio": "Audio",
       "translation": "Translation",
+      "voice": "Voice messages",
       "app": "Application"
     },
     "apiKey": {
@@ -65,6 +66,10 @@
       "mixGainDb": "Original gain",
       "vadEconomy": "Silence economy (VAD)",
       "vadEconomyHint": "Doesn't send silence to Gemini — saves up to ~50%, but may clip the very start of a phrase"
+    },
+    "voice": {
+      "ttsVoice": "Speech voice (TTS)",
+      "ttsVoiceHint": "The voice used to speak the translation of recorded messages. Voices differ in timbre and gender — e.g. Puck and Charon sound male, Kore and Zephyr female."
     },
     "app": {
       "uiLang": "Interface language",

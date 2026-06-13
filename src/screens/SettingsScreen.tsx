@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ListBox,
@@ -24,7 +24,7 @@ import { ApiKeyField } from "../components/ApiKeyField";
 import { Banner } from "../components/Banner";
 import { SectionTitle } from "../components/ScreenShell";
 import { IconCheck, IconCross } from "../components/Icons";
-import type { DeviceInfo } from "../lib/ipc";
+import { ipc, type DeviceInfo } from "../lib/ipc";
 import i18next from "../i18n";
 
 // Helper to build device select options (null = system default)
@@ -164,6 +164,12 @@ export function SettingsScreen() {
   const setLastError = useAppStore((s) => s.setLastError);
   const refreshDevices = useAppStore((s) => s.refreshDevices);
   const setScreen = useAppStore((s) => s.setScreen);
+
+  // TTS voice names (single source of truth lives in the backend).
+  const [ttsVoices, setTtsVoices] = useState<string[]>([]);
+  useEffect(() => {
+    ipc.ttsVoices().then(setTtsVoices).catch(() => setTtsVoices([]));
+  }, []);
 
   if (!settings) {
     return (
@@ -332,6 +338,44 @@ export function SettingsScreen() {
             label={t("settings.translation.vadEconomy")}
             hint={t("settings.translation.vadEconomyHint")}
           />
+        </SettingsCard>
+
+        {/* ---- Voice messages ---- */}
+        <SettingsCard title={t("settings.sections.voice")}>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[13px] text-muted">
+              {t("settings.voice.ttsVoice")}
+            </label>
+            <SelectRoot
+              selectedKey={settings.ttsVoice}
+              onSelectionChange={(key) =>
+                void patchSettings({ ttsVoice: String(key) })
+              }
+              aria-label={t("settings.voice.ttsVoice")}
+            >
+              <SelectTrigger className="lt-press w-64 inline-flex items-center gap-2 h-10 px-3.5 rounded-[10px] border border-hairline bg-surface text-[14px] text-ink hover:border-stone-300">
+                <SelectValue className="flex-1 text-left truncate" />
+                <SelectIndicator />
+              </SelectTrigger>
+              <SelectPopover>
+                <ListBox
+                  items={(ttsVoices.length ? ttsVoices : [settings.ttsVoice]).map(
+                    (v) => ({ id: v })
+                  )}
+                  className="max-h-72 overflow-y-auto"
+                >
+                  {(item) => (
+                    <ListBoxItem key={item.id} id={item.id} textValue={item.id}>
+                      {item.id}
+                    </ListBoxItem>
+                  )}
+                </ListBox>
+              </SelectPopover>
+            </SelectRoot>
+            <p className="text-[12px] text-muted">
+              {t("settings.voice.ttsVoiceHint")}
+            </p>
+          </div>
         </SettingsCard>
 
         {/* ---- App ---- */}

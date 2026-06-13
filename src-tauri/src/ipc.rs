@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::audio::devices::{list_audio_apps, list_devices, AppSession, DevicesPayload};
 use crate::audio::dsp::{self, StreamResampler};
-use crate::gemini::rest::{synthesize_speech, transcribe_translate, validate_key, KeyStatus};
+use crate::gemini::rest::{synthesize_speech, transcribe_translate, validate_key, KeyStatus, TTS_VOICES};
 use crate::live_ctrl::{LiveConfig, LiveController};
 use crate::store::history::{CallRecord, HistoryStore, VoiceRecord, VoiceUpdate};
 use crate::store::secrets::{get_api_key, set_api_key};
@@ -97,6 +97,13 @@ pub async fn api_key_set(key: String) -> Result<KeyStatus, String> {
 #[tauri::command]
 pub fn devices_list() -> Result<DevicesPayload, String> {
     list_devices().map_err(|e| e.to_string())
+}
+
+/// List the available TTS voice names — the single source of truth for the
+/// settings voice picker (so the UI never hard-codes a stale list).
+#[tauri::command]
+pub fn tts_voices() -> Vec<&'static str> {
+    TTS_VOICES.to_vec()
 }
 
 /// List processes with an active audio session (the app picker source).

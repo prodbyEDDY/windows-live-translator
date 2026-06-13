@@ -75,6 +75,7 @@ pub fn run() {
             ipc::api_key_status,
             ipc::api_key_set,
             ipc::devices_list,
+            ipc::tts_voices,
             ipc::audio_apps_list,
             ipc::live_start,
             ipc::live_stop,

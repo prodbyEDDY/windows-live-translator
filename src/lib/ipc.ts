@@ -122,6 +122,7 @@ export const ipc = {
   apiKeyStatus: () => invoke<KeyStatus>("api_key_status"),
   apiKeySet: (key: string) => invoke<KeyStatus>("api_key_set", { key }),
   devicesList: () => invoke<DevicesPayload>("devices_list"),
+  ttsVoices: () => invoke<string[]>("tts_voices"),
   audioAppsList: () => invoke<AppSession[]>("audio_apps_list"),
   liveStart: (cfg: LiveConfig) => invoke<void>("live_start", { cfg }),
   liveStop: () => invoke<void>("live_stop"),
