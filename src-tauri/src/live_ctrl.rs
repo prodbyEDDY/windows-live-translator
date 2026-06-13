@@ -490,6 +490,12 @@ impl LiveController {
                 let mut vad = EnergyVad::new();
                 let mut preroll: std::collections::VecDeque<Vec<i16>> =
                     std::collections::VecDeque::with_capacity(VAD_PREROLL_CHUNKS);
+                // Latch for a speech onset (`JustResumed`) so the pre-roll flush
+                // survives ticks where the resampler buffered this raw block to
+                // empty output. Capture block sizes are not fixed, so the single
+                // `JustResumed` block can resample to nothing — without this latch
+                // the flush branch would be skipped and the first word clipped.
+                let mut resume_pending = false;
 
                 while !stop_flag.load(Ordering::Relaxed) {
                     match rx.recv_timeout(BRIDGE_RECV_TIMEOUT) {
@@ -505,6 +511,11 @@ impl LiveController {
                             } else {
                                 VadDecision::Speech
                             };
+                            // Latch the onset BEFORE the empty-output early-out so
+                            // it isn't lost when this block resamples to nothing.
+                            if matches!(decision, VadDecision::JustResumed) {
+                                resume_pending = true;
+                            }
                             let down = resampler.push(&block);
                             if down.is_empty() {
                                 continue;
@@ -513,16 +524,25 @@ impl LiveController {
                             // Always drive the chunker (resampler/chunker
                             // continuity) regardless of the VAD decision.
                             let chunks = chunker.push(&pcm16);
-                            match decision {
+                            // A latched resume wins so the pre-roll is flushed on
+                            // the first real output after onset; otherwise act on
+                            // this block's own decision.
+                            let effective = if resume_pending {
+                                VadDecision::JustResumed
+                            } else {
+                                decision
+                            };
+                            match effective {
                                 VadDecision::JustResumed => {
                                     // Flush the pre-roll first, then send the
-                                    // current chunks.
+                                    // current chunks, and clear the latch.
                                     for c in preroll.drain(..) {
                                         session.blocking_send_audio(c);
                                     }
                                     for chunk in chunks {
                                         session.blocking_send_audio(chunk);
                                     }
+                                    resume_pending = false;
                                 }
                                 VadDecision::Speech => {
                                     for chunk in chunks {
