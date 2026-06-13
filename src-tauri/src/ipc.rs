@@ -10,10 +10,13 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::audio::devices::{list_audio_apps, list_devices, AppSession, DevicesPayload};
+use crate::audio::devices::{
+    cable_render_device_id, list_audio_apps, list_devices, AppSession, DevicesPayload,
+};
 use crate::audio::dsp::{self, StreamResampler};
 use crate::gemini::rest::{synthesize_speech, transcribe_translate, validate_key, KeyStatus, TTS_VOICES};
 use crate::live_ctrl::{LiveConfig, LiveController};
+use crate::passthrough::Passthrough;
 use crate::store::history::{CallRecord, HistoryStore, VoiceRecord, VoiceUpdate};
 use crate::store::secrets::{get_api_key, set_api_key};
 use crate::store::settings::{Settings, SettingsStore};
@@ -53,6 +56,55 @@ pub struct AppState {
     /// an `.await` — they `take()`/store the handle and drop the guard before
     /// any async work begins.
     pub recorder: std::sync::Mutex<Option<RecorderHandle>>,
+
+    /// The idle mic→cable passthrough, running only when no live session owns
+    /// the mic + cable. Plain `std::sync::Mutex`: the helpers never hold it
+    /// across an `.await`.
+    pub passthrough: std::sync::Mutex<Option<Passthrough>>,
+}
+
+/// Start the idle mic→cable passthrough if it should be running: it isn't
+/// already, no live session owns the devices, the setting is on, and the cable
+/// exists. Safe to call from any command — uses `try_lock` on the live session
+/// so it can never deadlock against `live_start`/`live_stop`.
+pub fn start_passthrough_if_idle(state: &AppState) {
+    let mut pt = state.passthrough.lock().unwrap_or_else(|p| p.into_inner());
+    if pt.is_some() {
+        return; // already running
+    }
+    // A live session owns the mic + cable; don't contend. `try_lock` keeps this
+    // non-blocking (and deadlock-free) — if the live slot is busy we simply skip.
+    match state.live.try_lock() {
+        Ok(guard) if guard.is_some() => return, // session running
+        Ok(_) => {}                             // idle — proceed
+        Err(_) => return,                       // start/stop in flight — skip
+    }
+    let settings = state.settings.get();
+    if !settings.idle_passthrough {
+        return;
+    }
+    let Some(cable) = cable_render_device_id() else {
+        return; // no virtual cable — nothing to feed
+    };
+    match Passthrough::start(settings.mic_id.clone(), cable) {
+        Ok(p) => {
+            *pt = Some(p);
+            tracing::info!("idle mic passthrough started");
+        }
+        Err(e) => tracing::warn!("idle passthrough failed to start: {e}"),
+    }
+}
+
+/// Stop the idle passthrough if running (no-op otherwise).
+pub fn stop_passthrough(state: &AppState) {
+    let taken = state
+        .passthrough
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take();
+    if let Some(p) = taken {
+        p.stop();
+    }
 }
 
 /// Read the current settings snapshot.
@@ -67,7 +119,18 @@ pub fn settings_set(
     state: State<'_, AppState>,
     patch: serde_json::Value,
 ) -> Result<Settings, String> {
-    state.settings.patch(patch).map_err(|e| e.to_string())
+    // Changing the idle-passthrough toggle or the mic device must re-evaluate the
+    // running passthrough (check before the patch consumes the value).
+    let touches_passthrough =
+        patch.get("idlePassthrough").is_some() || patch.get("micId").is_some();
+    let updated = state.settings.patch(patch).map_err(|e| e.to_string())?;
+    if touches_passthrough {
+        // Re-apply with the new mic / toggle. No-ops while a session is active
+        // (it re-evaluates on the next live_stop).
+        stop_passthrough(&state);
+        start_passthrough_if_idle(&state);
+    }
+    Ok(updated)
 }
 
 /// Report whether an API key is stored, WITHOUT a network round-trip.
@@ -145,6 +208,10 @@ pub async fn live_start(
 
     let api_key = get_api_key().ok_or_else(|| "no_api_key".to_string())?;
 
+    // The idle passthrough owns the mic + cable while no session runs — release
+    // them before the session claims them.
+    stop_passthrough(&state);
+
     // Build the controller off the event loop. `LiveController::start` does the
     // blocking device-open + WS spawn (and its own internal `block_on`), so it
     // must run inside `spawn_blocking`, not inline.
@@ -170,6 +237,9 @@ pub async fn live_start(
                 "live:state",
                 serde_json::json!({ "phase": "off", "outSession": "off", "inSession": "off" }),
             );
+            // The session never claimed the devices — bring the idle passthrough
+            // back so the peer still hears the original voice.
+            start_passthrough_if_idle(&state);
             Err(e.to_string())
         }
     }
@@ -201,6 +271,9 @@ pub async fn live_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(),
         "live:state",
         serde_json::json!({ "phase": "off", "outSession": "off", "inSession": "off" }),
     );
+    // Session released the mic + cable — resume the idle passthrough so the peer
+    // keeps hearing the original voice without re-selecting a device.
+    start_passthrough_if_idle(&state);
     Ok(())
 }
 

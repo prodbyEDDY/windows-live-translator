@@ -28,6 +28,18 @@ pub struct Settings {
     pub ui_lang: String,
     pub wizard_done: bool,
     pub tts_voice: String,
+    /// When no live session is running, pipe the raw microphone straight into
+    /// the virtual cable so the peer still hears the (untranslated) original
+    /// voice instead of silence. Lets the user leave their call app's mic set to
+    /// "CABLE Output" permanently. Default on; serde `default` keeps older
+    /// settings files loading (falls back to `false` — see `default_idle_passthrough`).
+    #[serde(default = "default_idle_passthrough")]
+    pub idle_passthrough: bool,
+}
+
+/// Default for [`Settings::idle_passthrough`] when absent from an older file.
+fn default_idle_passthrough() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -42,6 +54,7 @@ impl Default for Settings {
             vad_economy: false,
             ui_lang: "ru".into(), wizard_done: false,
             tts_voice: "Kore".into(),
+            idle_passthrough: true,
         }
     }
 }

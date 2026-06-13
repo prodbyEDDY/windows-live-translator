@@ -329,7 +329,6 @@ fn render_loop(
             let resampled = resampler.push(&mono);
             fifo.extend(resampled);
         }
-        queued_samples.store(fifo.len(), Ordering::Relaxed);
 
         // --- ingest the mix bed (original voice), if mixing is enabled ---
         // Already mono 48 kHz f32, so it goes straight into the ring. Keep only
@@ -344,23 +343,20 @@ fn render_loop(
         }
 
         // (Re-)arm the prebuffer once enough audio has accumulated. While not
-        // started we keep feeding silence below so the engine never underruns.
+        // started we still WRITE silence below so the engine never underruns.
         if !started && fifo.len() >= PREBUFFER_SAMPLES {
             started = true;
         }
 
-        // --- wait for the engine to free a slot in the buffer ---
-        match stream.event.wait_for_event(EVENT_TIMEOUT_MS) {
-            Ok(()) => {}
-            Err(wasapi::WasapiError::EventTimeout) => continue,
-            Err(e) => {
-                tracing::warn!("playback: event wait failed, stopping: {e}");
-                break;
-            }
-        }
-
-        // How many frames the device can accept right now (buffer_frames minus
-        // current padding). Equivalent to the task's `buffer_frames - padding`.
+        // --- WRITE first, THEN wait (event-driven render priming) ---
+        // We fill the engine's free space BEFORE blocking on the event. On the
+        // first pass this primes the buffer right after start_stream so the
+        // endpoint starts clocking and signalling render events. Waiting first
+        // (the previous order) left a physical endpoint with an empty buffer
+        // that, on some drivers, never fired the initial render event until the
+        // audio graph was reset — the "no translated sound until I toggle the
+        // output device" bug. This matches the wasapi crate's event-driven
+        // render example (write the available space, then wait).
         let writable = match stream.audio_client.get_available_space_in_frames() {
             Ok(f) => f as usize,
             Err(e) => {
@@ -371,38 +367,36 @@ fn render_loop(
         // Never ask for more than the buffer can hold.
         .min(buffer_frames);
 
-        if writable == 0 {
-            continue;
-        }
+        if writable > 0 {
+            // Pop real audio only when started; otherwise emit silence to keep
+            // the engine fed without consuming the (still-filling) jitter buffer.
+            byte_buf.clear();
+            byte_buf.reserve(writable * BYTES_PER_FRAME);
+            for _ in 0..writable {
+                // Underrun (or pre-start) → 0.0 silence for the translation.
+                let base = if started {
+                    fifo.pop_front().unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                // Mix the original voice under EVERY frame, including silence /
+                // prebuffer frames, so the original keeps flowing even when no
+                // translation is playing. When mixing is disabled the bed is
+                // always empty, so this returns `base` unchanged.
+                let sample = mix_sample(base, &mut bed, bed_gain);
+                let bytes = sample.to_le_bytes();
+                // Duplicate the mono sample to both stereo channels.
+                byte_buf.extend_from_slice(&bytes);
+                byte_buf.extend_from_slice(&bytes);
+            }
 
-        // Pop real audio only when started; otherwise emit silence to keep the
-        // engine fed without consuming the (still-filling) jitter buffer.
-        byte_buf.clear();
-        byte_buf.reserve(writable * BYTES_PER_FRAME);
-        for _ in 0..writable {
-            // Underrun (or pre-start) → 0.0 silence for the translation.
-            let base = if started {
-                fifo.pop_front().unwrap_or(0.0)
-            } else {
-                0.0
-            };
-            // Mix the original voice under EVERY frame, including silence /
-            // prebuffer frames, so the original keeps flowing even when no
-            // translation is playing. When mixing is disabled the bed is always
-            // empty, so this returns `base` unchanged.
-            let sample = mix_sample(base, &mut bed, bed_gain);
-            let bytes = sample.to_le_bytes();
-            // Duplicate the mono sample to both stereo channels.
-            byte_buf.extend_from_slice(&bytes);
-            byte_buf.extend_from_slice(&bytes);
-        }
-
-        if let Err(e) = stream
-            .render_client
-            .write_to_device(writable, &byte_buf, None)
-        {
-            tracing::warn!("playback: write failed (device gone?), stopping: {e}");
-            break;
+            if let Err(e) = stream
+                .render_client
+                .write_to_device(writable, &byte_buf, None)
+            {
+                tracing::warn!("playback: write failed (device gone?), stopping: {e}");
+                break;
+            }
         }
 
         // Publish the post-write FIFO length, and re-arm the prebuffer if we
@@ -410,6 +404,16 @@ fn render_loop(
         queued_samples.store(fifo.len(), Ordering::Relaxed);
         if started && fifo.is_empty() {
             started = false;
+        }
+
+        // --- now block until the engine frees space for the next write ---
+        match stream.event.wait_for_event(EVENT_TIMEOUT_MS) {
+            Ok(()) => {}
+            Err(wasapi::WasapiError::EventTimeout) => continue,
+            Err(e) => {
+                tracing::warn!("playback: event wait failed, stopping: {e}");
+                break;
+            }
         }
     }
 

@@ -3,6 +3,7 @@ pub mod store;
 pub mod gemini;
 pub mod voice;
 pub mod live_ctrl;
+pub mod passthrough;
 pub mod ipc;
 pub mod wizard;
 
@@ -169,10 +170,20 @@ pub fn run() {
                 history: Arc::new(history),
                 voice_dir,
                 recorder: std::sync::Mutex::new(None),
+                passthrough: std::sync::Mutex::new(None),
             });
 
             // Background poller emitting `devices:changed`. Call exactly once.
             spawn_device_watcher(app.handle().clone());
+
+            // Start the idle mic→cable passthrough (if enabled + cable present)
+            // off the setup thread so opening the devices doesn't delay the
+            // window appearing.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let state = handle.state::<AppState>();
+                crate::ipc::start_passthrough_if_idle(&state);
+            });
 
             Ok(())
         })
@@ -224,6 +235,16 @@ pub fn run() {
                     let controller = state.live.blocking_lock().take();
                     if let Some(controller) = controller {
                         controller.stop();
+                    }
+                    // Also tear down the idle passthrough so its mic + cable
+                    // streams are released cleanly on exit.
+                    let pt = state
+                        .passthrough
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .take();
+                    if let Some(p) = pt {
+                        p.stop();
                     }
                 });
             }
