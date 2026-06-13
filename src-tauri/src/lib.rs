@@ -64,6 +64,53 @@ fn apply_titlebar_chrome(window: &tauri::WebviewWindow) {
     }
 }
 
+/// Show, un-minimize, and focus the main window (tray actions).
+fn focus_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Build the system-tray icon (using the app's bundle icon) with a small menu —
+/// «Открыть» focuses the window, «Выход» quits. Left-clicking the tray icon also
+/// brings the window forward.
+fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "tray_show", "Открыть Live Translator", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray_quit", "Выход", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&show, &sep, &quit])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("Live Translator")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "tray_show" => focus_main(app),
+            "tray_quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                focus_main(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Tracing: respect RUST_LOG via the env filter, defaulting to `info`.
@@ -89,6 +136,11 @@ pub fn run() {
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 apply_titlebar_chrome(&window);
+            }
+
+            // System-tray icon + menu (quick focus / quit).
+            if let Err(e) = setup_tray(app.handle()) {
+                tracing::warn!("failed to set up system tray: {e}");
             }
 
             // Settings live under the per-user app-data directory.
