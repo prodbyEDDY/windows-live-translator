@@ -15,6 +15,55 @@ use crate::ipc::AppState;
 use crate::store::history::HistoryStore;
 use crate::store::settings::SettingsStore;
 
+/// Paint the native Windows title bar to match the app's light surface instead
+/// of following the OS (dark) theme, which looked like a black bar bolted onto a
+/// light UI. Uses DWM caption/text/border attributes (Windows 11 22000+); on
+/// older builds the calls simply no-op. COLORREF byte order is `0x00BBGGRR`.
+#[cfg(windows)]
+fn apply_titlebar_chrome(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{COLORREF, HWND};
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
+        DWMWA_USE_IMMERSIVE_DARK_MODE,
+    };
+
+    let Ok(raw) = window.hwnd() else { return };
+    // Reconstruct an HWND with *our* `windows` crate version (tauri may pin a
+    // different one); the raw pointer is identical either way.
+    let hwnd = HWND(raw.0);
+    // Surface/paper #f6f7f9 and ink #15181d, expressed as COLORREF (0x00BBGGRR).
+    let caption = COLORREF(0x00F9_F7F6);
+    let text = COLORREF(0x001D_1815);
+    let not_dark: i32 = 0; // BOOL FALSE → light-mode title bar
+
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &not_dark as *const i32 as *const _,
+            std::mem::size_of::<i32>() as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            &caption as *const COLORREF as *const _,
+            std::mem::size_of::<COLORREF>() as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &caption as *const COLORREF as *const _,
+            std::mem::size_of::<COLORREF>() as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TEXT_COLOR,
+            &text as *const COLORREF as *const _,
+            std::mem::size_of::<COLORREF>() as u32,
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Tracing: respect RUST_LOG via the env filter, defaulting to `info`.
@@ -36,6 +85,12 @@ pub fn run() {
         // Native "Save as…" dialog for exporting voice files.
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Paint the native title bar to match the light UI (Windows).
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                apply_titlebar_chrome(&window);
+            }
+
             // Settings live under the per-user app-data directory.
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;

@@ -44,7 +44,7 @@ function App() {
   // The wizard is a focused, full-window flow — no app chrome.
   if (screen === "wizard") {
     return (
-      <div className="grain-overlay relative h-screen w-screen bg-paper overflow-hidden">
+      <div className="relative h-screen w-screen bg-paper overflow-hidden">
         <title>{t("app.title")}</title>
         <WizardScreen />
       </div>
@@ -57,7 +57,7 @@ function App() {
       <Header />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="grain-overlay relative flex-1 min-w-0 flex flex-col bg-paper overflow-hidden">
+        <main className="relative flex-1 min-w-0 flex flex-col bg-paper overflow-hidden">
           <div className="relative z-10 flex-1 min-h-0 flex flex-col">
             {renderScreen()}
           </div>

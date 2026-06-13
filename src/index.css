@@ -13,34 +13,58 @@
 @source "../node_modules/@heroui/styles/dist";
 
 /* =========================================================================
-   "Студия синхронного перевода" — duotone studio theme
+   Live Translator — clean, calm, single-accent theme (Codex-like).
+   Restrained color strategy: cool neutral surfaces + one cobalt accent.
+   The "peer / IN" role is a NEUTRAL slate (no second hue) — direction is read
+   from alignment + a quiet fill, not from orange.
    ========================================================================= */
 @theme {
-  /* Surfaces & ink */
-  --color-paper: #faf9f6;
+  /* Surfaces & ink — cool neutral (no warm cream) */
+  --color-paper: #f6f7f9;
   --color-surface: #ffffff;
-  --color-ink: #1c1917;
-  --color-muted: #78716c;
-  --color-hairline: #e7e5e4;
+  --color-surface-2: #f1f3f6; /* quiet raised fill (peer bubble, chips) */
+  --color-ink: #15181d;
+  --color-ink-2: #3d434d; /* secondary text — AA on surface */
+  --color-muted: #646b76; /* tertiary — clears 4.5:1 on paper/surface */
+  --color-hairline: #e6e8ec;
+  --color-hairline-strong: #d3d7dd; /* hover borders, scrollbar thumb */
 
-  /* «Вы» — out direction: cobalt */
-  --color-cobalt: #1e5bd7;
-  --color-cobalt-tint: #eef3fe;
-  --color-cobalt-deep: #173fa0;
+  /* The single accent — cobalt («Вы» / OUT). Kept ≤10% of the surface. */
+  --color-cobalt: #2563eb;
+  --color-cobalt-tint: #eef2fe;
+  --color-cobalt-deep: #1d4ed8;
 
-  /* «Собеседник» — in direction: tangerine */
-  --color-tangerine: #e2620e;
-  --color-tangerine-tint: #fdf1e7;
-  --color-tangerine-deep: #b34a05;
+  /* «Собеседник» / IN — NEUTRAL slate (orange removed). Token name kept so
+     existing `*-tangerine*` utility classes stay valid; the value is slate. */
+  --color-tangerine: #64748b;
+  --color-tangerine-tint: #f1f3f6;
+  --color-tangerine-deep: #475569;
 
-  /* Semantic */
-  --color-ok: #177e5b;
-  --color-danger: #c2362b;
-  --color-warn: #b97d10;
+  /* Semantic — base + deep (AA text on tint) + tint (chip/banner ground) */
+  --color-ok: #15803d;
+  --color-ok-deep: #166534;
+  --color-ok-tint: #e9f3ec;
+  --color-danger: #dc2626;
+  --color-danger-deep: #b42318;
+  --color-danger-tint: #fdecec;
+  --color-warn: #b45309;
+  --color-warn-deep: #92400e;
+  --color-warn-tint: #f8efe3;
 
-  /* Radii */
-  --radius-card: 12px;
-  --radius-bubble: 14px;
+  /* Type scale — one generous ramp (bigger, cleaner). Maps to text-* utils. */
+  --text-code: 11px;
+  --text-label: 12px;
+  --text-caption: 13px;
+  --text-body: 14px;
+  --text-lead: 15px;
+  --text-emphasis: 16px;
+  --text-h2: 19px;
+  --text-h1: 24px;
+
+  /* Radii — soft, not over-rounded (cards 12–16px) */
+  --radius-input: 10px;
+  --radius-card: 14px;
+  --radius-bubble: 16px;
   --radius-pill: 999px;
 
   /* Fonts */
@@ -48,11 +72,11 @@
   --font-body: "Golos Text Variable", "Golos Text", ui-sans-serif, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Shadow system — one resting, one hover-lift. */
-  --shadow-studio: 0 1px 2px rgb(28 25 23 / 0.04), 0 4px 16px rgb(28 25 23 / 0.04);
-  --shadow-studio-hover: 0 2px 4px rgb(28 25 23 / 0.05), 0 12px 32px rgb(28 25 23 / 0.07);
-  /* Subtle cobalt glow for the idle Start button. */
-  --shadow-glow: 0 1px 2px rgb(28 25 23 / 0.05), 0 6px 18px rgb(30 91 215 / 0.28);
+  /* Shadow system — soft and singular; never paired with a 1px border as a
+     decorative "ghost card". */
+  --shadow-studio: 0 1px 2px rgb(21 24 29 / 0.04), 0 1px 3px rgb(21 24 29 / 0.03);
+  --shadow-studio-hover: 0 2px 8px rgb(21 24 29 / 0.06), 0 8px 24px rgb(21 24 29 / 0.06);
+  --shadow-glow: 0 1px 2px rgb(21 24 29 / 0.06), 0 6px 18px rgb(37 99 235 / 0.22);
 }
 
 /* ---- Base ---- */
@@ -71,21 +95,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Atmospheric grain — 2.5% opacity feTurbulence overlay */
-.grain-overlay::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* ---- Custom scrollbar ---- */
+/* ---- Custom scrollbar (cool neutral) ---- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #d6d3d1 transparent;
+  scrollbar-color: #d3d7dd transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
@@ -95,11 +108,11 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: #d3d7dd;
   border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #a8a29e;
+  background: #9aa1ab;
 }
 
 /* ---- Focus rings (cobalt, everywhere) ---- */
