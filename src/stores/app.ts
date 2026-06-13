@@ -113,6 +113,36 @@ export function deriveErrorReason(ev: {
 }
 
 /**
+ * Turn a backend session-failure reason into localized, human copy.
+ *
+ * The backend classifies Live failures as `gemini_<token>: <detail>` (token ∈
+ * quota / auth / model / bad_request / connect / closed / no_response). We map
+ * the token to a clear sentence — spelling out balance / limit / key / model
+ * problems — and append the raw server detail for diagnosis. Unrecognized
+ * reasons fall back to the generic "session failed: <reason>".
+ */
+export function localizeLiveReason(reason: string): string {
+  const m = /^gemini_([a-z_]+)(?::\s*([\s\S]*))?$/.exec(reason);
+  if (m) {
+    const token = m[1];
+    const detail = (m[2] ?? "").trim();
+    const keyByToken: Record<string, string> = {
+      quota: "live.error.quotaExceeded",
+      auth: "live.error.authFailed",
+      model: "live.error.modelUnavailable",
+      bad_request: "live.error.badRequest",
+      connect: "live.error.connectFailed",
+      closed: "live.error.serverClosed",
+      no_response: "live.error.noResponse",
+    };
+    const key = keyByToken[token] ?? "live.error.sessionFailed";
+    const base = i18next.t(key);
+    return detail ? `${base} (${detail})` : base;
+  }
+  return `${i18next.t("live.error.sessionFailed")}: ${reason}`;
+}
+
+/**
  * Auto-stop handler for terminal session failures (fix B0 / AUTO-STOP).
  *
  * Backend leaves a dead controller in state after `phase:"error"`, so a later
@@ -133,7 +163,7 @@ function handleLiveStateForAutoStop(
   if (reason === "__sourceLost__") {
     message = i18next.t("live.error.sourceLost");
   } else if (reason) {
-    message = `${i18next.t("live.error.sessionFailed")}: ${reason}`;
+    message = localizeLiveReason(reason);
   } else {
     message = i18next.t("live.error.sessionFailed");
   }
@@ -359,6 +389,13 @@ export const useAppStore = create<AppState>((set, _get) => ({
   stopLiveSession: async () => {
     const state = _get();
     const { settings, durationSec } = state;
+    // Optimistic UI reset: flip to idle immediately so Stop feels instant rather
+    // than waiting out the (few-hundred-ms) backend teardown. `live_stop` also
+    // emits an authoritative "off" when the teardown completes.
+    set({
+      liveState: { phase: "off", outSession: "off", inSession: "off" },
+      durationSec: 0,
+    });
     // Save transcript before stopping (only if there is meaningful content).
     // Persist the FULL transcript, not the capped store copy.
     if (settings && shouldSaveCall(fullTranscript)) {

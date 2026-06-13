@@ -73,6 +73,26 @@ fn emit(ev: &mpsc::Sender<SessionEvent>, label: &str, event: SessionEvent) {
     }
 }
 
+/// Classify a WebSocket *handshake* failure. A non-101 response from Gemini
+/// arrives as `Error::Http(resp)` carrying the HTTP status and a JSON error body
+/// (auth / quota / balance / model). Anything else (TLS, I/O, protocol) is a
+/// transient connect error worth retrying.
+fn classify_connect_error(e: &tokio_tungstenite::tungstenite::Error) -> LiveFailure {
+    use tokio_tungstenite::tungstenite::Error as WsError;
+    match e {
+        WsError::Http(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp
+                .body()
+                .as_ref()
+                .map(|b| String::from_utf8_lossy(b).into_owned())
+                .unwrap_or_default();
+            classify_live_failure(Some(status), &body, "connect")
+        }
+        other => classify_live_failure(None, &format!("connect: {other}"), "connect"),
+    }
+}
+
 const PENDING_CAP: usize = 100; // ~10s of 100ms chunks
 
 /// Hard deadline for the first server frame after a setup send. A connection
@@ -90,18 +110,21 @@ async fn run_session(
     let mut resume_handle: Option<String> = None;
     let mut pending: VecDeque<Vec<i16>> = VecDeque::new(); // audio buffered across reconnects
     let mut attempt: u32 = 0;
+    // The most recent *classified* failure reason (auth / quota / model / …),
+    // retained so that when we finally give up the user sees the real cause
+    // instead of the generic "too many reconnect attempts".
+    let mut last_reason: Option<String> = None;
 
     'outer: loop {
         // Unified backoff gate: every path that re-enters the connect loop bumps
         // `attempt`, so a single capped, cancellable sleep here covers them all.
         if attempt > 0 {
             if attempt > 6 {
-                tracing::error!(label = cfg.label, "live session failed: too many reconnect attempts");
-                emit(
-                    &ev,
-                    cfg.label,
-                    SessionEvent::Failed("too many reconnect attempts".into()),
-                );
+                let reason = last_reason
+                    .clone()
+                    .unwrap_or_else(|| "too many reconnect attempts".to_string());
+                tracing::error!(label = cfg.label, reason = %reason, "live session failed: giving up");
+                emit(&ev, cfg.label, SessionEvent::Failed(reason));
                 return;
             }
             emit(&ev, cfg.label, SessionEvent::Reconnecting);
@@ -136,6 +159,19 @@ async fn run_session(
                 conn = &mut connect => match conn {
                     Ok((ws, _)) => break ws,
                     Err(e) => {
+                        // The handshake is where Gemini reports auth / quota /
+                        // balance / model-access problems: a non-101 response is
+                        // surfaced as `Error::Http(resp)` carrying the HTTP status
+                        // and a JSON error body. Classify it and fail fast on the
+                        // permanent ones (retrying a bad key or an empty balance
+                        // just wastes a minute before the same error).
+                        let failure = classify_connect_error(&e);
+                        if failure.permanent {
+                            tracing::error!(label = cfg.label, reason = %failure.reason, "live session failed (handshake)");
+                            emit(&ev, cfg.label, SessionEvent::Failed(failure.reason));
+                            return;
+                        }
+                        last_reason = Some(failure.reason);
                         attempt += 1;
                         tracing::warn!(
                             label = cfg.label,
@@ -194,6 +230,14 @@ async fn run_session(
         loop {
             tokio::select! {
                 _ = &mut first_frame_deadline, if !connected => {
+                    // The socket opened but the server never answered the setup.
+                    // Keep an actionable hint so that if every attempt times out
+                    // the user gets something better than "too many reconnects".
+                    last_reason.get_or_insert_with(|| {
+                        "gemini_no_response: server accepted the socket but never \
+                         answered the setup (model access or account may be the cause)"
+                            .to_string()
+                    });
                     attempt += 1;
                     tracing::warn!(
                         label = cfg.label,
@@ -231,7 +275,23 @@ async fn run_session(
                         let payload: &[u8] = match &msg {
                             Message::Text(t) => t.as_bytes(),
                             Message::Binary(b) => b.as_ref(),
-                            Message::Close(_) => {
+                            Message::Close(frame) => {
+                                // A close frame carries the server's reason for
+                                // dropping us — Gemini puts quota / billing / auth
+                                // messages here. Surface it (and fail fast when it
+                                // names a permanent cause) instead of blindly
+                                // reconnecting into the same wall.
+                                let detail = match &frame {
+                                    Some(f) => format!("{} {}", u16::from(f.code), f.reason),
+                                    None => String::new(),
+                                };
+                                let failure = classify_live_failure(None, &detail, "closed");
+                                if failure.permanent {
+                                    tracing::error!(label = cfg.label, reason = %failure.reason, "live session failed (server closed)");
+                                    emit(&ev, cfg.label, SessionEvent::Failed(failure.reason));
+                                    return;
+                                }
+                                last_reason = Some(failure.reason);
                                 attempt += 1;
                                 tracing::warn!(
                                     label = cfg.label,

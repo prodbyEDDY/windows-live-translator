@@ -28,6 +28,72 @@ pub fn setup_message(target_lang: &str, echo: bool, resume_handle: Option<&str>)
     }})
 }
 
+/// A classified Live-session failure: a stable reason token (with a short human
+/// detail) plus whether the failure is *permanent* (no point retrying — surface
+/// it immediately) or transient (worth a reconnect).
+///
+/// `reason` is shaped `"gemini_<token>: <detail>"` so the frontend can map the
+/// leading token to localized copy (quota / auth / model / …) while still
+/// showing the raw server detail for diagnosis.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiveFailure {
+    pub reason: String,
+    pub permanent: bool,
+}
+
+/// Classify a Live WebSocket failure from an optional HTTP status (handshake
+/// rejection) and a body / close-frame reason `text`.
+///
+/// Recognizes the cases a user most needs spelled out — an exhausted balance /
+/// quota / rate limit, a bad API key or missing permission, and an unavailable
+/// model — and marks them permanent so the session fails fast with a clear
+/// message instead of silently burning six reconnect attempts. Anything else
+/// falls back to `fallback_token` and is treated as transient (retryable).
+pub fn classify_live_failure(
+    http_status: Option<u16>,
+    text: &str,
+    fallback_token: &str,
+) -> LiveFailure {
+    let lower = text.to_lowercase();
+    let has = |needle: &str| lower.contains(needle);
+    let detail: String = text.trim().chars().take(200).collect();
+
+    let (token, permanent): (&str, bool) = if http_status == Some(401)
+        || http_status == Some(403)
+        || has("api_key_invalid")
+        || has("api key not valid")
+        || has("permission_denied")
+        || has("unauthenticated")
+    {
+        ("auth", true)
+    } else if http_status == Some(429)
+        || has("resource_exhausted")
+        || has("quota")
+        || has("billing")
+        || has("rate limit")
+        || has("insufficient")
+    {
+        ("quota", true)
+    } else if http_status == Some(404)
+        || has("not_found")
+        || has("is not found")
+        || has("not supported")
+    {
+        ("model", true)
+    } else if http_status == Some(400) || has("invalid_argument") {
+        ("bad_request", true)
+    } else {
+        (fallback_token, false)
+    };
+
+    let reason = if detail.is_empty() {
+        format!("gemini_{token}")
+    } else {
+        format!("gemini_{token}: {detail}")
+    };
+    LiveFailure { reason, permanent }
+}
+
 pub fn realtime_audio_message(pcm16: &[i16]) -> Value {
     let mut bytes = Vec::with_capacity(pcm16.len() * 2);
     for s in pcm16 { bytes.extend_from_slice(&s.to_le_bytes()); }
@@ -102,6 +168,35 @@ pub fn extract_audio(sc: &ServerContent) -> Vec<i16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn classify_live_failure_buckets() {
+        // Auth: HTTP 403 or message markers → permanent.
+        let f = classify_live_failure(Some(403), "PERMISSION_DENIED", "connect");
+        assert!(f.permanent && f.reason.starts_with("gemini_auth"));
+        let f = classify_live_failure(None, "API key not valid", "closed");
+        assert!(f.permanent && f.reason.starts_with("gemini_auth"));
+
+        // Quota / balance / rate limit → permanent (the user's case).
+        let f = classify_live_failure(Some(429), "", "connect");
+        assert!(f.permanent && f.reason.starts_with("gemini_quota"));
+        let f = classify_live_failure(None, "RESOURCE_EXHAUSTED: quota", "closed");
+        assert!(f.permanent && f.reason.starts_with("gemini_quota"));
+
+        // Model not found → permanent.
+        let f = classify_live_failure(Some(404), "model not found", "connect");
+        assert!(f.permanent && f.reason.starts_with("gemini_model"));
+
+        // Unknown / network → transient, uses the fallback token.
+        let f = classify_live_failure(None, "connect: io error", "connect");
+        assert!(!f.permanent && f.reason.starts_with("gemini_connect"));
+        let f = classify_live_failure(None, "1011 internal", "closed");
+        assert!(!f.permanent && f.reason.starts_with("gemini_closed"));
+
+        // Detail is carried (truncated) for diagnosis.
+        let f = classify_live_failure(Some(429), "billing disabled for project", "connect");
+        assert!(f.reason.contains("billing disabled"));
+    }
+
     #[test]
     fn setup_message_shape() {
         let v = setup_message("ru", false, None);

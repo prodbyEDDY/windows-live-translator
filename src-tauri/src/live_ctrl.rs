@@ -271,26 +271,19 @@ impl LiveController {
     pub fn start(app: AppHandle, api_key: String, cfg: LiveConfig) -> anyhow::Result<Self> {
         let stop_flag = Arc::new(AtomicBool::new(false));
 
-        // Shared per-direction status. IN starts "off" in test mode (the IN
-        // pipeline is skipped), "connecting" otherwise.
-        let initial = SessState {
-            out: "connecting".into(),
-            in_: if cfg.test_mode { "off".into() } else { "connecting".into() },
-        };
-
-        // 0. Tell the UI we're spinning up before any (potentially slow) device
-        //    or socket work.
-        let _ = app.emit("live:state", state_value(&initial));
-
-        let state = Arc::new(Mutex::new(initial));
+        // ── Phase 1: acquire EVERY fallible resource up front ───────────────
+        // Nothing in this phase spawns a thread/task or emits UI state, so any
+        // failure here leaves nothing running and no stale "connecting" state —
+        // `live_start` just returns the error, the UI shows it, and the Start
+        // button comes back. Handles created here are torn down by their own
+        // `Drop` if a later acquisition fails.
 
         // 1. Resolve the OUT playback device (cable, or user device in test mode).
         let out_device =
             resolve_out_device(cfg.test_mode, cfg.output_id.clone(), cable_render_device_id())?;
 
-        // 2. Start the mic capture. Gemini wants 16 kHz; playback resamples the
-        //    24 kHz reply up to its 48 kHz render rate internally, so playback's
-        //    `src_rate` is 24000.
+        // 2. Start the mic capture (OUT source). Gemini wants 16 kHz; playback
+        //    resamples the 24 kHz reply up to its 48 kHz render rate internally.
         let mic = start_capture(CaptureSource::Mic {
             device_id: cfg.mic_id.clone(),
         })?;
@@ -309,6 +302,29 @@ impl LiveController {
             (None, None)
         };
         let playback = start_playback_with_mix(out_device, 24000, mix)?;
+
+        // 4. Acquire the IN source + sink (real mode only) — still Phase 1,
+        //    BEFORE any thread is spawned, so a bad capture source (e.g. an app
+        //    that can't be loopback-captured) fails cleanly with no partial
+        //    start and no half-spawned OUT bridge to emit a spurious source_lost.
+        let in_resources = if cfg.test_mode {
+            None
+        } else {
+            let in_source = resolve_in_source(&cfg.capture_mode, cfg.app_pid)?;
+            let in_cap = start_capture(in_source)?;
+            let pb_in = start_playback(cfg.output_id.clone(), 24000)?;
+            Some((in_cap, pb_in))
+        };
+
+        // ── Phase 2: infallible — now we may emit UI state and spawn workers ─
+        // Shared per-direction status. IN starts "off" in test mode (the IN
+        // pipeline is skipped), "connecting" otherwise.
+        let initial = SessState {
+            out: "connecting".into(),
+            in_: if cfg.test_mode { "off".into() } else { "connecting".into() },
+        };
+        let _ = app.emit("live:state", state_value(&initial));
+        let state = Arc::new(Mutex::new(initial));
 
         // 4. Spawn the OUT Gemini session from inside the tokio runtime.
         let (session, events) = tauri::async_runtime::block_on(async {
@@ -355,14 +371,7 @@ impl LiveController {
         let mut ducking_join = None;
         let mut in_level: Option<Arc<std::sync::atomic::AtomicI32>> = None;
 
-        if !cfg.test_mode {
-            // 7a. Resolve + start the IN capture source (app loopback / system).
-            let in_source = resolve_in_source(&cfg.capture_mode, cfg.app_pid)?;
-            let in_cap = start_capture(in_source)?;
-
-            // 7b. IN playback → my headphones (`output_id`; None = system default).
-            let pb_in = start_playback(cfg.output_id.clone(), 24000)?;
-
+        if let Some((in_cap, pb_in)) = in_resources {
             // 7c. IN Gemini session: translate peer speech into MY language.
             let (sess_in, in_events) = tauri::async_runtime::block_on(async {
                 LiveSession::spawn(LiveSessionConfig {

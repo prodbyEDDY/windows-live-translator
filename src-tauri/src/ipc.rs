@@ -141,15 +141,31 @@ pub async fn live_start(
     // Build the controller off the event loop. `LiveController::start` does the
     // blocking device-open + WS spawn (and its own internal `block_on`), so it
     // must run inside `spawn_blocking`, not inline.
-    let controller = tauri::async_runtime::spawn_blocking(move || {
-        LiveController::start(app, api_key, cfg)
+    let app_for_start = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        LiveController::start(app_for_start, api_key, cfg)
     })
     .await
-    .map_err(|e| format!("live_start join: {e}"))?
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("live_start join: {e}"))?;
 
-    *guard = Some(controller);
-    Ok(())
+    match result {
+        Ok(controller) => {
+            *guard = Some(controller);
+            Ok(())
+        }
+        Err(e) => {
+            // Make sure a failed start never leaves the UI showing a phantom
+            // "connecting" (which would render a Stop button that can't stop
+            // anything, since no controller was stored). `LiveController::start`
+            // is structured to emit nothing on failure, but this is cheap
+            // insurance and also covers a join/panic error.
+            let _ = app.emit(
+                "live:state",
+                serde_json::json!({ "phase": "off", "outSession": "off", "inSession": "off" }),
+            );
+            Err(e.to_string())
+        }
+    }
 }
 
 /// Stop the live session if one is running. A no-op if nothing is live.
@@ -160,7 +176,7 @@ pub async fn live_start(
 /// `tauri::async_runtime::block_on` internally; running it inside
 /// `spawn_blocking` is sound.
 #[tauri::command]
-pub async fn live_stop(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn live_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     // Take the controller out under the lock, then drop the lock before the
     // (blocking) teardown so a concurrent `live_start` isn't starved.
     //
@@ -170,6 +186,14 @@ pub async fn live_stop(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(controller) = controller {
         let _ = tauri::async_runtime::spawn_blocking(move || controller.stop()).await;
     }
+    // The teardown threads emit no state of their own, so the UI would otherwise
+    // stay frozen on its last phase ("running"/"connecting") after a stop — the
+    // exact "Stop does nothing" symptom. Emit an explicit "off" unconditionally
+    // (even when nothing was running) so Stop always returns the UI to idle.
+    let _ = app.emit(
+        "live:state",
+        serde_json::json!({ "phase": "off", "outSession": "off", "inSession": "off" }),
+    );
     Ok(())
 }
 

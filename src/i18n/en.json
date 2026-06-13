@@ -216,6 +216,13 @@
       "noAppSelected": "Select an app to capture first",
       "sourceLost": "Audio source lost — session stopped",
       "sessionFailed": "Session ended with an error",
+      "quotaExceeded": "Gemini API quota or balance exhausted. Check your quotas and billing in Google AI Studio.",
+      "authFailed": "Gemini API key is invalid or lacks access. Check the key in Settings.",
+      "modelUnavailable": "The translation model isn't available for your key (no access to gemini-3.5-live-translate-preview).",
+      "badRequest": "Gemini rejected the session parameters.",
+      "connectFailed": "Couldn't connect to Gemini. Check your internet connection.",
+      "serverClosed": "Gemini closed the connection.",
+      "noResponse": "Gemini accepted the connection but never answered the session setup (model access or account may be the cause).",
       "generic": "Something went wrong. Details: {{raw}}"
     },
     "pickAppPlaceholder": "Pick an application…",
