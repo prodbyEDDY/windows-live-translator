@@ -14,12 +14,15 @@ use crate::audio::devices::{
     cable_render_device_id, list_audio_apps, list_devices, AppSession, DevicesPayload,
 };
 use crate::audio::dsp::{self, StreamResampler};
+use crate::elevenlabs::rest::{synthesize_elevenlabs, validate_elevenlabs, ELEVEN_MODEL_ID};
 use crate::gemini::rest::{synthesize_speech, transcribe_translate, validate_key, KeyStatus, TTS_VOICES};
 use crate::live_ctrl::{LiveConfig, LiveController};
 use crate::passthrough::Passthrough;
 use crate::store::history::{CallRecord, HistoryStore, VoiceRecord, VoiceUpdate};
-use crate::store::secrets::{get_api_key, set_api_key};
-use crate::store::settings::{Settings, SettingsStore};
+use crate::store::secrets::{
+    get_api_key, get_elevenlabs_api_key, set_api_key, set_elevenlabs_api_key,
+};
+use crate::store::settings::{Settings, SettingsStore, TtsProvider};
 use crate::voice::codec::{encode_voice_ogg, mime_for_ext};
 use crate::voice::pipeline::{
     self, source_file_name, translated_file_name, stage_error, RecorderHandle, STAGE_DONE,
@@ -152,6 +155,56 @@ pub async fn api_key_set(key: String) -> Result<KeyStatus, String> {
     let status = validate_key(&key).await;
     if matches!(status, KeyStatus::Valid) {
         set_api_key(&key).map_err(|e| e.to_string())?;
+    }
+    Ok(status)
+}
+
+/// Report whether an ElevenLabs key is stored, WITHOUT a network round-trip.
+/// `Valid` optimistically when present; the UI calls [`elevenlabs_key_set`] to
+/// truly validate it together with the voice id.
+#[tauri::command]
+pub fn elevenlabs_status() -> KeyStatus {
+    match get_elevenlabs_api_key() {
+        Some(_) => KeyStatus::Valid,
+        None => KeyStatus::Missing,
+    }
+}
+
+/// Validate an ElevenLabs key + voice id against the get-voice endpoint and,
+/// only if valid, store the key (keyring) and the voice id (settings). An empty
+/// `key` reuses the stored key, so the voice id can be changed without
+/// re-typing it.
+#[tauri::command]
+pub async fn elevenlabs_key_set(
+    state: State<'_, AppState>,
+    key: Option<String>,
+    voice_id: String,
+) -> Result<KeyStatus, String> {
+    let voice_id = voice_id.trim().to_string();
+    if voice_id.is_empty() {
+        return Ok(KeyStatus::Invalid {
+            reason: "voice_id is empty".into(),
+        });
+    }
+    // Use the supplied key if non-empty, otherwise fall back to the stored one.
+    let provided = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
+    let resolved = match provided.clone() {
+        Some(k) => k,
+        None => match get_elevenlabs_api_key() {
+            Some(k) => k,
+            None => return Ok(KeyStatus::Missing),
+        },
+    };
+
+    let status = validate_elevenlabs(&resolved, &voice_id).await;
+    if matches!(status, KeyStatus::Valid) {
+        if let Some(k) = provided {
+            set_elevenlabs_api_key(&k).map_err(|e| e.to_string())?;
+        }
+        state
+            .settings
+            .patch(serde_json::json!({ "elevenVoiceId": voice_id }))
+            .map_err(|e| e.to_string())?;
     }
     Ok(status)
 }
@@ -367,9 +420,51 @@ async fn run_import_pipeline(
     }
 }
 
+/// How an outgoing (recorded) message should be voiced. Built from settings by
+/// the record/retry commands and threaded into the synthesis stage so the
+/// pipeline reads one struct instead of several loose args.
+pub struct OutSynth {
+    pub provider: TtsProvider,
+    pub gemini_voice: String,
+    pub eleven_voice_id: String,
+    pub eleven_model_id: &'static str,
+}
+
+/// The resolved synthesis route for a recording (pure; unit-tested).
+pub enum SynthPlan<'a> {
+    Gemini { voice: &'a str },
+    Eleven { voice_id: &'a str, model: &'a str },
+    /// Pre-flight failure → this `error:<short>` stage, no network call.
+    Fail(&'static str),
+}
+
+/// Decide the synthesis route. ElevenLabs requires both a stored key and a
+/// non-empty voice id; missing either yields the matching `error:` short code
+/// (never a silent fallback to Gemini).
+pub fn plan_out_synth<'a>(synth: &'a OutSynth, eleven_key_present: bool) -> SynthPlan<'a> {
+    match synth.provider {
+        TtsProvider::Gemini => SynthPlan::Gemini {
+            voice: &synth.gemini_voice,
+        },
+        TtsProvider::Elevenlabs => {
+            if !eleven_key_present {
+                SynthPlan::Fail("el_no_key")
+            } else if synth.eleven_voice_id.trim().is_empty() {
+                SynthPlan::Fail("el_no_voice")
+            } else {
+                SynthPlan::Eleven {
+                    voice_id: &synth.eleven_voice_id,
+                    model: synth.eleven_model_id,
+                }
+            }
+        }
+    }
+}
+
 /// Run the recording (`kind = "out"`) stage machine for `id`: transcribe the
-/// recorded WAV into `peer_lang`, synthesize the translation with `tts_voice`,
-/// encode it to Ogg Opus, write the translated file, and mark the row done.
+/// recorded WAV into `peer_lang`, synthesize the translation via the selected
+/// provider (`synth`), encode it to Ogg Opus, write the translated file, and
+/// mark the row done.
 async fn run_record_pipeline(
     app: AppHandle,
     history: Arc<HistoryStore>,
@@ -377,7 +472,7 @@ async fn run_record_pipeline(
     id: i64,
     source_path: PathBuf,
     peer_lang: String,
-    tts_voice: String,
+    synth: OutSynth,
 ) {
     set_stage(&app, &history, id, STAGE_TRANSCRIBING);
 
@@ -417,13 +512,36 @@ async fn run_record_pipeline(
         },
     );
 
-    // 2. Synthesize the translation to PCM16 24 kHz.
+    // 2. Synthesize the translation to PCM16 24 kHz via the selected provider.
     set_stage(&app, &history, id, STAGE_SYNTHESIZING);
-    let pcm = match synthesize_speech(&api_key, &transcription.translation, &tts_voice).await {
+    let eleven_key = get_elevenlabs_api_key();
+    let plan = plan_out_synth(&synth, eleven_key.is_some());
+    let is_eleven = matches!(plan, SynthPlan::Eleven { .. });
+    let pcm_result = match plan {
+        SynthPlan::Gemini { voice } => {
+            synthesize_speech(&api_key, &transcription.translation, voice).await
+        }
+        SynthPlan::Eleven { voice_id, model } => {
+            // `eleven_key` is `Some` here — the planner verified its presence.
+            synthesize_elevenlabs(
+                eleven_key.as_deref().unwrap_or_default(),
+                voice_id,
+                model,
+                &transcription.translation,
+            )
+            .await
+        }
+        SynthPlan::Fail(short) => {
+            set_stage(&app, &history, id, &stage_error(short));
+            return;
+        }
+    };
+    let pcm = match pcm_result {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!("voice_record {id}: synthesize_speech failed: {e}");
-            set_stage(&app, &history, id, &stage_error("synthesize_failed"));
+            let short = if is_eleven { "el_synth_failed" } else { "synthesize_failed" };
+            tracing::warn!("voice_record {id}: synthesize failed ({short}): {e}");
+            set_stage(&app, &history, id, &stage_error(short));
             return;
         }
     };
@@ -593,11 +711,21 @@ pub async fn voice_record_stop(
     }
     update_source_path(&state.history, id, &source_path);
 
+    // The Gemini voice arrives from JS (`tts_voice`); the provider + cloned voice
+    // id come from settings (the single server-side source of truth).
+    let settings = state.settings.get();
+    let synth = OutSynth {
+        provider: settings.tts_provider,
+        gemini_voice: tts_voice,
+        eleven_voice_id: settings.eleven_voice_id,
+        eleven_model_id: ELEVEN_MODEL_ID,
+    };
+
     let history = Arc::clone(&state.history);
     let voice_dir = state.voice_dir.clone();
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
-        run_record_pipeline(app2, history, voice_dir, id, source_path, peer_lang, tts_voice).await;
+        run_record_pipeline(app2, history, voice_dir, id, source_path, peer_lang, synth).await;
     });
 
     Ok(id)
@@ -649,14 +777,18 @@ pub async fn voice_retry(
 
     if rec.kind == "out" {
         let voice_dir = state.voice_dir.clone();
-        // `tts_voice` isn't stored per-row; use the current settings voice.
-        let tts_voice = state.settings.get().tts_voice;
+        // Neither the voice nor the provider is stored per-row; read the current
+        // settings (same source the record command uses).
+        let settings = state.settings.get();
+        let synth = OutSynth {
+            provider: settings.tts_provider,
+            gemini_voice: settings.tts_voice.clone(),
+            eleven_voice_id: settings.eleven_voice_id.clone(),
+            eleven_model_id: ELEVEN_MODEL_ID,
+        };
         let peer_lang = rec.target_lang.clone();
         tauri::async_runtime::spawn(async move {
-            run_record_pipeline(
-                app2, history, voice_dir, id, source_path, peer_lang, tts_voice,
-            )
-            .await;
+            run_record_pipeline(app2, history, voice_dir, id, source_path, peer_lang, synth).await;
         });
     } else {
         let ext = source_path
@@ -806,3 +938,47 @@ fn write_wav_16k(samples: &[f32], path: &Path) -> anyhow::Result<()> {
 
 /// Mic capture rate (mono 48 kHz). Local alias to keep `write_wav_16k` readable.
 const CAPTURE_RATE_HZ: usize = crate::audio::capture::CAPTURE_RATE;
+
+#[cfg(test)]
+mod synth_plan_tests {
+    use super::*;
+
+    fn synth(provider: TtsProvider, voice_id: &str) -> OutSynth {
+        OutSynth {
+            provider,
+            gemini_voice: "Kore".into(),
+            eleven_voice_id: voice_id.into(),
+            eleven_model_id: ELEVEN_MODEL_ID,
+        }
+    }
+
+    #[test]
+    fn gemini_provider_plans_gemini() {
+        let s = synth(TtsProvider::Gemini, "");
+        assert!(matches!(plan_out_synth(&s, false), SynthPlan::Gemini { voice } if voice == "Kore"));
+        // Gemini ignores ElevenLabs key/voice presence entirely.
+        assert!(matches!(plan_out_synth(&s, true), SynthPlan::Gemini { .. }));
+    }
+
+    #[test]
+    fn elevenlabs_without_key_fails_no_key() {
+        let s = synth(TtsProvider::Elevenlabs, "v1");
+        assert!(matches!(plan_out_synth(&s, false), SynthPlan::Fail("el_no_key")));
+    }
+
+    #[test]
+    fn elevenlabs_without_voice_fails_no_voice() {
+        let s = synth(TtsProvider::Elevenlabs, "  ");
+        assert!(matches!(plan_out_synth(&s, true), SynthPlan::Fail("el_no_voice")));
+    }
+
+    #[test]
+    fn elevenlabs_ready_plans_eleven() {
+        let s = synth(TtsProvider::Elevenlabs, "v1");
+        assert!(matches!(
+            plan_out_synth(&s, true),
+            SynthPlan::Eleven { voice_id, model }
+                if voice_id == "v1" && model == ELEVEN_MODEL_ID
+        ));
+    }
+}

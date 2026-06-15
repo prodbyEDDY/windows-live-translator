@@ -211,6 +211,8 @@ pub fn run() {
             ipc::settings_set,
             ipc::api_key_status,
             ipc::api_key_set,
+            ipc::elevenlabs_status,
+            ipc::elevenlabs_key_set,
             ipc::devices_list,
             ipc::tts_voices,
             ipc::audio_apps_list,
