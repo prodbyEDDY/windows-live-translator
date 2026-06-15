@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 src-tauri/target
+.worktrees/
 
 # Design-QA browser artifacts
 .playwright-mcp/
