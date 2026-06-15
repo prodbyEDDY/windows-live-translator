@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod store;
 pub mod gemini;
+pub mod elevenlabs;
 pub mod voice;
 pub mod live_ctrl;
 pub mod passthrough;
