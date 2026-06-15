@@ -614,7 +614,25 @@ pub async fn voice_retry(
     app: AppHandle,
     state: State<'_, AppState>,
     id: i64,
+    target_lang: Option<String>,
 ) -> Result<(), String> {
+    // Re-target if a new language was supplied (the card was retried after the
+    // user changed the language pair): persist it on the row FIRST so the new
+    // target is what the pipeline below reads from `rec.target_lang` — and what a
+    // future retry reuses. `None` keeps the existing target (a plain re-attempt).
+    if let Some(lang) = target_lang {
+        state
+            .history
+            .update_voice(
+                id,
+                VoiceUpdate {
+                    target_lang: Some(lang),
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
     let rec = state
         .history
         .get_voice(id)

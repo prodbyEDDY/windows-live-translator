@@ -120,8 +120,10 @@
     },
     "translation": {
       "sectionDesc": "Fine-tuning for live translation. The defaults work well for most calls.",
-      "echoTargetLanguage": "Echo peer speech",
-      "echoTargetLanguageHint": "If the peer is already speaking your language: repeat their speech (enabled) or stay silent (disabled)",
+      "echoTargetLanguage": "Don't translate the peer when they speak my language",
+      "echoTargetLanguageHint": "When the peer switches to your language, you hear their original audio instead of a translation. Applies to the incoming direction only (peer → you).",
+      "idleAutoStop": "Auto-stop when idle",
+      "idleAutoStopHint": "Automatically stop translating after 2 minutes of silence, so you don't spend Gemini minutes if you forget to stop the session.",
       "duckingEnabled": "Lower the peer's volume while translating",
       "duckingEnabledHint": "While a translation is playing, the peer app's original volume is automatically lowered so the translation is clearer, then restored afterwards.",
       "duckLevel": "Duck level",
@@ -189,6 +191,7 @@
   },
   "voice": {
     "title": "Voice Messages",
+    "voiceLabel": "Voice",
     "recordButton": "Record",
     "stopButton": "Stop",
     "recordCap": "max 5:00",
@@ -282,7 +285,8 @@
     "statusError": "error",
     "levelMic": "Mic",
     "levelApp": "App",
-    "costTooltip": "Estimated cost at $0.023/min per direction (public preview pricing)",
+    "costTooltip": "Estimated cost at ~$0.037/min per direction (input $0.0053 + output $0.0315). A two-way call runs both sessions.",
+    "autoStopped": "Translation stopped automatically after 2 minutes of silence to save Gemini credits. Press Start to resume.",
     "error": {
       "noApiKey": "Add an API key in Settings",
       "alreadyRunning": "Translation is already running",

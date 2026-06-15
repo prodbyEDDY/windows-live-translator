@@ -6,8 +6,29 @@ import { resolveResource } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ipc, type VoiceRecord } from "../lib/ipc";
+import { useAppStore } from "../stores/app";
 import { IconGrip, IconDownload } from "./Icons";
 import { localeFor } from "../lib/format";
+
+/** Refresh / retry arrow — inline SVG. */
+function IconRetry({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v5h-5" />
+    </svg>
+  );
+}
 
 // Bundled drag thumbnail — resolved once and cached at module scope.
 let dragIconPromise: Promise<string | null> | null = null;
@@ -140,8 +161,18 @@ export function VoiceCard({ record }: VoiceCardProps) {
   }
 
   async function handleRetry() {
+    // Re-run with the CURRENT language for this card's direction, so changing the
+    // language pair then hitting retry re-translates into the new language:
+    // incoming (dropped) → my language; outgoing (recorded) → the peer's language.
+    // (The TTS voice for outgoing cards is taken fresh from settings by the
+    // backend on retry.)
+    const settings = useAppStore.getState().settings;
+    const targetLang =
+      record.kind === "in"
+        ? settings?.myLang ?? "ru"
+        : settings?.peerLang ?? "en";
     try {
-      await ipc.voiceRetry(record.id);
+      await ipc.voiceRetry(record.id, targetLang);
     } catch {
       /* error surfaces via voice:progress event */
     }
@@ -216,12 +247,17 @@ export function VoiceCard({ record }: VoiceCardProps) {
               <StageTrack steps={stepIndex} accent={accent} done={isDone} />
             </span>
           )}
-          {errMsg && (
+          {/* Retry is available once a card is no longer processing (done OR
+              error): re-runs the translation with the currently-selected
+              language for this card's direction. */}
+          {!isProcessing && (
             <button
               onClick={() => void handleRetry()}
-              className="lt-press px-3 h-7 rounded-pill text-label font-medium border border-hairline text-ink hover:border-hairline-strong"
+              aria-label={t("voice.retry")}
+              title={t("voice.retry")}
+              className="lt-press inline-flex items-center justify-center w-7 h-7 rounded-pill text-muted border border-hairline hover:text-ink hover:border-hairline-strong"
             >
-              {t("voice.retry")}
+              <IconRetry size={14} />
             </button>
           )}
         </div>

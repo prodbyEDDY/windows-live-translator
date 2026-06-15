@@ -44,6 +44,9 @@ export function buildTestConfig(settings: Settings): LiveConfig {
     captureMode: "system",
     appPid: null,
     echoTargetLanguage: settings.echoTargetLanguage,
+    // The wizard test is a short, user-driven "say a phrase" check; never let the
+    // idle watchdog cut it short.
+    idleAutoStop: false,
     duckingEnabled: settings.duckingEnabled,
     duckLevel: settings.duckLevel,
     // Test mode plays the translation into the user's own output device, so

@@ -29,6 +29,8 @@ interface AppState {
   cost: CostEvent | null;
   screen: Screen;
   lastError: string | null;
+  /** A non-error, dismissable notice (e.g. "session auto-stopped after 2 min"). */
+  notice: string | null;
   voiceMessages: VoiceRecord[];
   /** Selected app pid for "app" capture mode (lifted from LiveScreen so the
    *  header Start button can drive the session). */
@@ -45,6 +47,7 @@ interface AppState {
   setScreen: (screen: Screen) => void;
   setKeyStatus: (ks: KeyStatus) => void;
   setLastError: (err: string | null) => void;
+  setNotice: (notice: string | null) => void;
   setAppPid: (pid: number | null) => void;
   setDurationSec: (s: number | ((prev: number) => number)) => void;
   startLive: (cfg: LiveConfig) => Promise<void>;
@@ -71,6 +74,16 @@ function nextId() {
  * what we persist to history on stop.
  */
 const MAX_UI_LINES = 400;
+/**
+ * Hard cap on the full (history-bound) transcript kept in the JS heap. A long
+ * call streams many interim fragments per second per direction; without a cap
+ * the un-rendered `fullTranscript` array (and the `JSON.stringify` at stop) grew
+ * without bound and could OOM the WebView2 renderer ("app fully closed during a
+ * long call"). 8000 lines is far beyond any real conversation; on the rare
+ * overflow we drop the oldest (already-closed) lines, so history stores a very
+ * generous tail rather than the entire multi-hour call.
+ */
+const MAX_FULL_LINES = 8000;
 let fullTranscript: TranscriptLine[] = [];
 
 /** Awaited Tauri event unlisteners, registered in init() (HMR-safe cleanup). */
@@ -168,7 +181,7 @@ function handleLiveStateForAutoStop(
     message = i18next.t("live.error.sessionFailed");
   }
 
-  set({ lastError: message, durationSec: 0 });
+  set({ lastError: message, durationSec: 0, cost: null });
 
   // Drain the dead controller so the next Start works again. Call the raw IPC
   // (not `stopLive`, which resets `lastError`) so the surfaced reason survives.
@@ -188,6 +201,7 @@ export const useAppStore = create<AppState>((set, _get) => ({
   cost: null,
   screen: "live",
   lastError: null,
+  notice: null,
   voiceMessages: [],
   appPid: null,
   durationSec: 0,
@@ -238,6 +252,10 @@ export const useAppStore = create<AppState>((set, _get) => ({
         // Maintain the full (un-capped) transcript outside the store — no
         // re-render — then mirror only the last MAX_UI_LINES into the store.
         appendTranscriptMut(fullTranscript, ev, nextId);
+        // Bound heap growth on very long calls (drop oldest, closed lines).
+        if (fullTranscript.length > MAX_FULL_LINES) {
+          fullTranscript.splice(0, fullTranscript.length - MAX_FULL_LINES);
+        }
         set({
           transcript:
             fullTranscript.length > MAX_UI_LINES
@@ -260,7 +278,19 @@ export const useAppStore = create<AppState>((set, _get) => ({
       }),
 
       ipc.onCost((ev) => {
+        // Ignore a late tick that lands after the session went idle (the backend
+        // cost task can emit one final tick right after Stop), so a stale value
+        // can't reappear once we've cleared it.
+        if (_get().liveState?.phase === "off") return;
         set({ cost: ev });
+      }),
+
+      ipc.onAutoStop(() => {
+        // The backend auto-closed an idle session to save credits. Tear down
+        // through the normal stop path (persists history, resumes passthrough,
+        // emits the authoritative "off") and surface a gentle, non-error notice.
+        void _get().stopLiveSession();
+        set({ notice: i18next.t("live.autoStopped") });
       }),
 
       ipc.onVoiceProgress(async (ev) => {
@@ -326,6 +356,8 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
   setLastError: (lastError: string | null) => set({ lastError }),
 
+  setNotice: (notice: string | null) => set({ notice }),
+
   setAppPid: (appPid: number | null) => set({ appPid }),
 
   setDurationSec: (s) =>
@@ -373,6 +405,7 @@ export const useAppStore = create<AppState>((set, _get) => ({
         captureMode: settings.captureMode,
         appPid: captureMode === "app" ? appPid : null,
         echoTargetLanguage: settings.echoTargetLanguage,
+        idleAutoStop: settings.idleAutoStop,
         duckingEnabled: settings.duckingEnabled,
         duckLevel: settings.duckLevel,
         mixOriginal: settings.mixOriginal,
@@ -395,6 +428,9 @@ export const useAppStore = create<AppState>((set, _get) => ({
     set({
       liveState: { phase: "off", outSession: "off", inSession: "off" },
       durationSec: 0,
+      // Clear the cost badge so it doesn't hang frozen at the last value after
+      // the session is off (the meter only ever reset on the NEXT start before).
+      cost: null,
     });
     // Save transcript before stopping (only if there is meaningful content).
     // Persist the FULL transcript, not the capped store copy.

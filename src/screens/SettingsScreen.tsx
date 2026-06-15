@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ListBox,
@@ -23,7 +23,8 @@ import { useAppStore } from "../stores/app";
 import { ApiKeyField } from "../components/ApiKeyField";
 import { Banner } from "../components/Banner";
 import { IconCheck, IconCross } from "../components/Icons";
-import { ipc, type DeviceInfo } from "../lib/ipc";
+import { type DeviceInfo } from "../lib/ipc";
+import { isLoopbackCaptureDevice } from "../lib/echo";
 import i18next from "../i18n";
 
 // Helper to build device select options (null = system default)
@@ -204,12 +205,6 @@ export function SettingsScreen() {
   const refreshDevices = useAppStore((s) => s.refreshDevices);
   const setScreen = useAppStore((s) => s.setScreen);
 
-  // TTS voice names (single source of truth lives in the backend).
-  const [ttsVoices, setTtsVoices] = useState<string[]>([]);
-  useEffect(() => {
-    ipc.ttsVoices().then(setTtsVoices).catch(() => setTtsVoices([]));
-  }, []);
-
   if (!settings) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -221,7 +216,12 @@ export function SettingsScreen() {
   const inputDevices = devices?.inputs ?? [];
   const outputDevices = devices?.outputs ?? [];
   const cablePresent = devices?.cablePresent ?? false;
-  const micOptions = buildDeviceOptions(inputDevices);
+  // Hide render-loopback / monitor endpoints ("CABLE Output", "Stereo Mix", …):
+  // picking one as the mic makes the OUT session capture the call audio and
+  // translate the peer straight back to themselves.
+  const micOptions = buildDeviceOptions(
+    inputDevices.filter((d) => !isLoopbackCaptureDevice(d.name))
+  );
   const outputOptions = buildDeviceOptions(outputDevices);
   const sysDefault = t("settings.audio.systemDefault");
 
@@ -334,13 +334,20 @@ export function SettingsScreen() {
             {settings.duckingEnabled && (
               <div className="ml-11 flex flex-col gap-1.5">
                 <label className="text-label text-muted">
-                  {t("settings.translation.duckLevel")}: {formatPercent(settings.duckLevel)}
+                  {t("settings.translation.duckLevel")}:{" "}
+                  {formatPercent(settings.duckLevel * 100)}
                 </label>
                 <Slider
-                  value={[settings.duckLevel]}
+                  /* duckLevel is stored 0..1 (the backend's absolute gain); the
+                     slider works in whole percent, so scale on the way in/out.
+                     Previously the raw 0..1 value was fed to a 0..100 slider and
+                     the percent showed "0.2%" while any adjustment sent 0..100
+                     (clamped to 1.0 = no ducking). */
+                  value={[settings.duckLevel * 100]}
                   onChange={(vals) =>
                     void patchSettings({
-                      duckLevel: (Array.isArray(vals) ? vals[0] : vals) as number,
+                      duckLevel:
+                        ((Array.isArray(vals) ? vals[0] : vals) as number) / 100,
                     })
                   }
                   minValue={0}
@@ -397,44 +404,13 @@ export function SettingsScreen() {
             label={t("settings.translation.vadEconomy")}
             hint={t("settings.translation.vadEconomyHint")}
           />
-        </SettingsCard>
 
-        {/* ---- Voice messages ---- */}
-        <SettingsCard
-          title={t("settings.sections.voice")}
-          description={t("settings.voice.sectionDesc")}
-        >
-          <Field
-            label={t("settings.voice.ttsVoice")}
-            hint={t("settings.voice.ttsVoiceHint")}
-          >
-            <SelectRoot
-              selectedKey={settings.ttsVoice}
-              onSelectionChange={(key) =>
-                void patchSettings({ ttsVoice: String(key) })
-              }
-              aria-label={t("settings.voice.ttsVoice")}
-            >
-              <SelectTrigger className={`${SELECT_TRIGGER} w-64`}>
-                <SelectValue className="flex-1 text-left truncate" />
-                <SelectIndicator />
-              </SelectTrigger>
-              <SelectPopover>
-                <ListBox
-                  items={(ttsVoices.length ? ttsVoices : [settings.ttsVoice]).map(
-                    (v) => ({ id: v })
-                  )}
-                  className="max-h-72 overflow-y-auto"
-                >
-                  {(item) => (
-                    <ListBoxItem key={item.id} id={item.id} textValue={item.id}>
-                      {item.id}
-                    </ListBoxItem>
-                  )}
-                </ListBox>
-              </SelectPopover>
-            </SelectRoot>
-          </Field>
+          <SettingSwitch
+            selected={settings.idleAutoStop}
+            onChange={(c) => void patchSettings({ idleAutoStop: c })}
+            label={t("settings.translation.idleAutoStop")}
+            hint={t("settings.translation.idleAutoStopHint")}
+          />
         </SettingsCard>
 
         {/* ---- App ---- */}

@@ -119,6 +119,15 @@ pub fn run() {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 
+    // Log panics with a backtrace. Background audio/WS threads use unwinding (no
+    // panic=abort), so a thread panic kills only that thread and would otherwise
+    // be invisible in a windowed release build — this makes such failures
+    // diagnosable instead of presenting as a silent dead pipeline.
+    std::panic::set_hook(Box::new(|info| {
+        let bt = std::backtrace::Backtrace::force_capture();
+        tracing::error!("thread panicked: {info}\n{bt}");
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second instance was launched — focus the existing main window.
@@ -155,6 +164,15 @@ pub fn run() {
             let history = HistoryStore::open(app_data_dir.join("history.db"))?;
             let voice_dir = app_data_dir.join("voice");
             std::fs::create_dir_all(&voice_dir)?;
+
+            // Sweep leaked voice artifacts (rolled-back/crashed pipelines, old
+            // schemas) so the voice directory can't accumulate orphans forever.
+            // Non-destructive: only files no row references are removed.
+            match history.prune_orphan_voice_files(&voice_dir) {
+                Ok(n) if n > 0 => tracing::info!("pruned {n} orphan voice file(s) at startup"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("voice orphan prune failed: {e}"),
+            }
 
             // Crash recovery: if a previous run died while a peer app was ducked,
             // restore those session volumes now (best-effort, before anything

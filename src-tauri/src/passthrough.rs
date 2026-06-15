@@ -40,7 +40,8 @@ impl Passthrough {
     /// playback's source rate is therefore [`RENDER_RATE`] (a 1:1 pass).
     pub fn start(mic_id: Option<String>, cable_id: String) -> anyhow::Result<Self> {
         let mic = start_capture(CaptureSource::Mic { device_id: mic_id })?;
-        let playback = start_playback(Some(cable_id), RENDER_RATE)?;
+        // No default fallback: this is the VB-CABLE sink, never the speakers.
+        let playback = start_playback(Some(cable_id), RENDER_RATE, false)?;
 
         let stop = Arc::new(AtomicBool::new(false));
         let rx = mic.rx.clone();

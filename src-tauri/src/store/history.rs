@@ -55,6 +55,9 @@ pub struct VoiceUpdate {
     pub translation: Option<String>,
     pub translated_audio_path: Option<String>,
     pub stage: Option<String>,
+    /// New translation target language. Set when the user re-runs a card after
+    /// changing languages (retry re-target, see `ipc::voice_retry`).
+    pub target_lang: Option<String>,
 }
 
 // ── store ─────────────────────────────────────────────────────────────────────
@@ -253,6 +256,9 @@ impl HistoryStore {
         if patch.stage.is_some() {
             sets.push("stage = ?");
         }
+        if patch.target_lang.is_some() {
+            sets.push("target_lang = ?");
+        }
 
         if sets.is_empty() {
             return Ok(());
@@ -289,6 +295,9 @@ impl HistoryStore {
             values.push(Box::new(v));
         }
         if let Some(v) = patch.stage {
+            values.push(Box::new(v));
+        }
+        if let Some(v) = patch.target_lang {
             values.push(Box::new(v));
         }
         values.push(Box::new(id));
@@ -381,6 +390,68 @@ impl HistoryStore {
 
         Ok(())
     }
+
+    /// Delete files under `voice_dir` that no voice row references (leaked
+    /// artifacts from a roll-back, a crash mid-pipeline, or a future schema).
+    /// Returns the number of files removed. Safe and non-destructive to user data:
+    /// only files NOT named by any row's `source_path`/`translated_audio_path`
+    /// (compared by file name) are removed; rows are never touched. Intended to
+    /// run once at startup so the voice directory can't accumulate orphans forever.
+    pub fn prune_orphan_voice_files(&self, voice_dir: &Path) -> anyhow::Result<usize> {
+        if !voice_dir.is_dir() {
+            return Ok(0);
+        }
+
+        let referenced: std::collections::HashSet<String> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt =
+                conn.prepare("SELECT source_path, translated_audio_path FROM voice_messages")?;
+            let mut set = std::collections::HashSet::new();
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })?;
+            for row in rows {
+                let (src, trans) = row?;
+                if let Some(n) = file_name_of(&src) {
+                    set.insert(n);
+                }
+                if let Some(n) = trans.as_deref().and_then(file_name_of) {
+                    set.insert(n);
+                }
+            }
+            set
+        };
+
+        let mut removed = 0usize;
+        if let Ok(entries) = std::fs::read_dir(voice_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string());
+                if let Some(name) = name {
+                    if !referenced.contains(&name) && std::fs::remove_file(&path).is_ok() {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        Ok(removed)
+    }
+}
+
+/// File-name component of a stored path (for orphan comparison). Paths are
+/// stored as the canonical `{id}-source.*` / `{id}-translated.ogg` under the
+/// voice dir, so the bare file name uniquely identifies a referenced file.
+fn file_name_of(p: &str) -> Option<String> {
+    Path::new(p)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
 }
 
 // ── row mappers ───────────────────────────────────────────────────────────────

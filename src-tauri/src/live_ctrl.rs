@@ -67,10 +67,18 @@ const BRIDGE_RECV_TIMEOUT: Duration = Duration::from_millis(200);
 const LEVELS_TICK: Duration = Duration::from_millis(100);
 /// Cost-meter tick interval (1 second).
 const COST_TICK: Duration = Duration::from_secs(1);
+/// Auto-close the session after this long with no translation activity (no
+/// input/output transcript and no server audio on either direction). Protects a
+/// forgotten session from billing dead air.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Public-preview pricing for the gemini-3.5-live-translate-preview model,
-/// charged per active session minute (per direction).
-const USD_PER_SESSION_MINUTE: f64 = 0.023;
+/// Effective per-minute dev-API price of gemini-3.5-live-translate-preview for
+/// ONE active stream (direction), from the official pricing page: audio input
+/// $3.50/1M tokens (≈$0.0053/min) + audio output $21.00/1M tokens (≈$0.0315/min)
+/// at 25 tokens/s ≈ **$0.0368/min**. A two-way call runs two streams (~$0.074/min
+/// while both translate). This is an estimate — silence (echo off) and barge-ins
+/// change real token consumption.
+const USD_PER_SESSION_MINUTE: f64 = 0.0368;
 
 /// Estimate the session cost in USD.
 ///
@@ -102,7 +110,13 @@ pub struct LiveConfig {
     /// "app" | "system" — drives the IN capture source (Task 11). Unused here.
     pub capture_mode: String,
     pub app_pid: Option<u32>,
+    /// Same-language passthrough for the IN direction only: when the peer speaks
+    /// the user's own language, the model passes the original audio through
+    /// instead of going silent. The OUT direction always sends `false` (it must
+    /// never re-voice speech that leaked into the mic — see [`LiveController::start`]).
     pub echo_target_language: bool,
+    /// Auto-stop the session after [`IDLE_TIMEOUT`] of no translation activity.
+    pub idle_auto_stop: bool,
     pub ducking_enabled: bool,
     pub duck_level: f32,
     /// Mix the original (mic) voice under the translated reply on the OUT
@@ -301,7 +315,10 @@ impl LiveController {
         } else {
             (None, None)
         };
-        let playback = start_playback_with_mix(out_device, 24000, mix)?;
+        // No default fallback: in live mode this is the VB-CABLE sink and must
+        // never degrade to the user's speakers (that would drop the peer's audio
+        // and risk feeding the translation back into the mic).
+        let playback = start_playback_with_mix(out_device, 24000, mix, false)?;
 
         // 4. Acquire the IN source + sink (real mode only) — still Phase 1,
         //    BEFORE any thread is spawned, so a bad capture source (e.g. an app
@@ -312,7 +329,9 @@ impl LiveController {
         } else {
             let in_source = resolve_in_source(&cfg.capture_mode, cfg.app_pid)?;
             let in_cap = start_capture(in_source)?;
-            let pb_in = start_playback(cfg.output_id.clone(), 24000)?;
+            // Headphone (IN) sink: allow falling back to the default output if the
+            // saved device is gone, so a stale output id degrades gracefully.
+            let pb_in = start_playback(cfg.output_id.clone(), 24000, true)?;
             Some((in_cap, pb_in))
         };
 
@@ -326,13 +345,24 @@ impl LiveController {
         let _ = app.emit("live:state", state_value(&initial));
         let state = Arc::new(Mutex::new(initial));
 
+        // Session-activity tracking for the idle auto-stop: `last_activity` holds
+        // the millis-since-`session_start` of the most recent translation event
+        // (input/output transcript or server audio, either direction). The cost
+        // task watches it and auto-stops after IDLE_TIMEOUT of no activity.
+        let session_start = std::time::Instant::now();
+        let last_activity = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
         // 4. Spawn the OUT Gemini session from inside the tokio runtime.
+        //    OUT always sends echo=false: if peer audio leaks into the mic and is
+        //    already in the peer's language, echoing it would push the peer's own
+        //    words back down the cable (amplifying any acoustic loop). The
+        //    same-language passthrough setting applies to the IN direction only.
         let (session, events) = tauri::async_runtime::block_on(async {
             LiveSession::spawn(LiveSessionConfig {
                 endpoint: None,
                 api_key: api_key.clone(),
                 target_lang: cfg.peer_lang.clone(),
-                echo: cfg.echo_target_language,
+                echo: false,
                 label: "out",
             })
         });
@@ -359,6 +389,8 @@ impl LiveController {
             events,
             playback.tx.clone(),
             "out",
+            session_start,
+            last_activity.clone(),
         );
 
         // --- IN pipeline (real mode only) -----------------------------------
@@ -402,6 +434,8 @@ impl LiveController {
                 in_events,
                 pb_in.tx.clone(),
                 "in",
+                session_start,
+                last_activity.clone(),
             );
 
             // 7f. Ducking thread (COM lives here; the guard is `!Send`). Resolve
@@ -437,9 +471,18 @@ impl LiveController {
         // 8. Level-meter task: mic (OUT) + IN capture level when present.
         Self::spawn_levels(app.clone(), stop_flag.clone(), mic.level_db_x100.clone(), in_level);
 
-        // 9. Cost-meter task: track active seconds per direction and emit live:cost.
+        // 9. Cost-meter task: track active seconds per direction and emit
+        //    live:cost; also hosts the idle-auto-stop watchdog.
         let has_in = !cfg.test_mode;
-        Self::spawn_cost(app, stop_flag.clone(), state.clone(), has_in);
+        Self::spawn_cost(
+            app,
+            stop_flag.clone(),
+            state.clone(),
+            has_in,
+            session_start,
+            last_activity,
+            cfg.idle_auto_stop,
+        );
 
         Ok(Self {
             stop_flag,
@@ -581,6 +624,7 @@ impl LiveController {
     /// Spawn a session-events task for `direction` ("in" | "out") on the Tauri
     /// async runtime. Routes audio to the matching playback and transcripts /
     /// state to the UI, updating this direction's slot in the shared state.
+    #[allow(clippy::too_many_arguments)]
     fn spawn_events(
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
@@ -588,19 +632,32 @@ impl LiveController {
         mut events: tokio::sync::mpsc::Receiver<SessionEvent>,
         playback_tx: crossbeam_channel::Sender<Vec<i16>>,
         direction: &'static str,
+        session_start: std::time::Instant,
+        last_activity: Arc<std::sync::atomic::AtomicU64>,
     ) {
         tauri::async_runtime::spawn(async move {
+            // Bump the shared idle clock whenever real translation activity flows
+            // (server audio or either transcript). The cost task reads it to
+            // auto-stop after IDLE_TIMEOUT of silence.
+            let mark_activity = || {
+                last_activity.store(
+                    session_start.elapsed().as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+            };
             while !stop_flag.load(Ordering::Relaxed) {
                 let Some(ev) = events.recv().await else {
                     break;
                 };
                 match ev {
                     SessionEvent::Audio(pcm) => {
+                        mark_activity();
                         // Drop on backpressure — playback is bursty and the render
                         // thread must never be blocked by us.
                         let _ = playback_tx.try_send(pcm);
                     }
                     SessionEvent::InputTranscript(text) => {
+                        mark_activity();
                         let _ = app.emit(
                             "live:transcript",
                             serde_json::json!({
@@ -611,6 +668,7 @@ impl LiveController {
                         );
                     }
                     SessionEvent::OutputTranscript(text) => {
+                        mark_activity();
                         let _ = app.emit(
                             "live:transcript",
                             serde_json::json!({
@@ -638,6 +696,7 @@ impl LiveController {
                         break;
                     }
                     SessionEvent::TurnComplete => {
+                        mark_activity();
                         // Close the current transcript line for this direction.
                         // The frontend treats kind "close" as "finalize the
                         // in-progress line" (contract agreed with the UI).
@@ -686,26 +745,42 @@ impl LiveController {
         });
     }
 
-    /// Spawn the cost-meter task (Tauri async runtime).
+    /// Spawn the cost-meter task (Tauri async runtime), which also hosts the
+    /// idle auto-stop watchdog.
     ///
-    /// Ticks every second.  A second counts toward a direction when that
-    /// direction's status is `"running"` or `"reconnecting"`.  Emits
-    /// `live:cost { seconds, estimatedUsd }` on every tick:
-    /// * `seconds` = `max(out_secs, in_secs)` — the wall-clock elapsed time.
-    /// * `estimatedUsd` = cost for both directions combined via [`estimate_usd`].
+    /// Ticks every second. A second counts toward a direction ONLY while that
+    /// direction's status is `"running"` — `"reconnecting"` no longer bills,
+    /// because the WS is down and no translation is produced (this matches the
+    /// user's "it stopped translating, so it stopped charging" mental model).
+    /// Emits `live:cost { seconds, estimatedUsd }` on every tick.
+    ///
+    /// Idle auto-stop: once a direction has reached `"running"`, if no translation
+    /// activity (`last_activity`, fed by [`spawn_events`]) has occurred for
+    /// [`IDLE_TIMEOUT`], emit `live:auto_stop { reason: "idle" }` ONCE and exit.
+    /// The frontend reacts by calling `live_stop` (the authoritative teardown that
+    /// owns the controller). We do NOT touch `stop_flag` here: leaving the
+    /// controller in place but flag-stopped would strand it in `AppState` and make
+    /// the next `live_start` return `already_running`.
     ///
     /// `has_in` should be `false` in test mode (IN pipeline is skipped), which
     /// prevents the "off" IN status from ever contributing seconds.
+    #[allow(clippy::too_many_arguments)]
     fn spawn_cost(
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
         state: Arc<Mutex<SessState>>,
         has_in: bool,
+        session_start: std::time::Instant,
+        last_activity: Arc<std::sync::atomic::AtomicU64>,
+        idle_auto_stop: bool,
     ) {
         tauri::async_runtime::spawn(async move {
             let mut tick = tokio::time::interval(COST_TICK);
             let mut out_secs: u64 = 0;
             let mut in_secs: u64 = 0;
+            // Don't arm the idle watchdog until the session has actually connected,
+            // so a slow connect can't be mistaken for inactivity.
+            let mut ever_running = false;
             while !stop_flag.load(Ordering::Relaxed) {
                 tick.tick().await;
                 // Sample the current statuses under lock, then release immediately.
@@ -713,11 +788,13 @@ impl LiveController {
                     let guard = state.lock().unwrap_or_else(|p| p.into_inner());
                     (guard.out.clone(), guard.in_.clone())
                 };
-                if out_status == "running" || out_status == "reconnecting" {
+                if out_status == "running" {
                     out_secs += 1;
+                    ever_running = true;
                 }
-                if has_in && (in_status == "running" || in_status == "reconnecting") {
+                if has_in && in_status == "running" {
                     in_secs += 1;
+                    ever_running = true;
                 }
                 let seconds = out_secs.max(in_secs);
                 let estimated_usd = estimate_usd(out_secs, in_secs);
@@ -728,6 +805,21 @@ impl LiveController {
                         "estimatedUsd": estimated_usd,
                     }),
                 );
+
+                // Idle auto-stop: stop a session that has been connected but silent
+                // for IDLE_TIMEOUT, so a forgotten call doesn't keep billing.
+                if idle_auto_stop && ever_running {
+                    let now_ms = session_start.elapsed().as_millis() as u64;
+                    let last_ms = last_activity.load(Ordering::Relaxed);
+                    if now_ms.saturating_sub(last_ms) >= IDLE_TIMEOUT.as_millis() as u64 {
+                        tracing::info!("live session idle for {IDLE_TIMEOUT:?}, auto-stopping");
+                        let _ = app.emit(
+                            "live:auto_stop",
+                            serde_json::json!({ "reason": "idle" }),
+                        );
+                        break;
+                    }
+                }
             }
         });
     }
@@ -1001,21 +1093,21 @@ mod tests {
 
     #[test]
     fn estimate_usd_one_minute_out_only() {
-        // 60 out + 0 in = 60 / 60 * 0.023 = 0.023
+        // 60 out + 0 in = 60 / 60 * 0.0368 = 0.0368
         let usd = estimate_usd(60, 0);
         assert!(
-            (usd - 0.023).abs() < 1e-9,
-            "expected 0.023, got {usd}"
+            (usd - 0.0368).abs() < 1e-9,
+            "expected 0.0368, got {usd}"
         );
     }
 
     #[test]
     fn estimate_usd_one_minute_each_direction() {
-        // 60 out + 60 in = 120 / 60 * 0.023 = 0.046
+        // 60 out + 60 in = 120 / 60 * 0.0368 = 0.0736
         let usd = estimate_usd(60, 60);
         assert!(
-            (usd - 0.046).abs() < 1e-9,
-            "expected 0.046, got {usd}"
+            (usd - 0.0736).abs() < 1e-9,
+            "expected 0.0736, got {usd}"
         );
     }
 

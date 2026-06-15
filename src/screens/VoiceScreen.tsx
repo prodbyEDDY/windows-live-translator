@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  ListBox,
+  ListBoxItem,
+  SelectRoot,
+  SelectIndicator,
+  SelectPopover,
+  SelectTrigger,
+  SelectValue,
+} from "@heroui/react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
@@ -66,8 +75,11 @@ export function VoiceScreen() {
           }
 
           for (const path of ok) {
+            // A dropped file is an INCOMING message FROM the peer, so it must be
+            // translated INTO the user's OWN language (myLang) — not the peer's.
+            // (Recording, below, correctly targets peerLang for the outgoing clip.)
             const targetLang =
-              useAppStore.getState().settings?.peerLang ?? "en";
+              useAppStore.getState().settings?.myLang ?? "ru";
             try {
               const id = await ipc.voiceImport(path, targetLang);
               const rec = await ipc.voiceGet(id);
@@ -197,6 +209,9 @@ export function VoiceScreen() {
           </h1>
 
           <div className="flex items-center gap-3">
+            {/* TTS output voice for RECORDED (outgoing) messages — moved here from
+                Settings so it lives next to the recorder it affects. */}
+            <TtsVoiceSelect />
             {isRecording && (
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-emphasis text-ink tabular-nums">
@@ -271,6 +286,54 @@ export function VoiceScreen() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Output-voice picker for recorded (outgoing) voice messages. Bound to the same
+ * `settings.ttsVoice` the backend uses, so moving it here from Settings needs no
+ * new state or schema — the record/retry commands already read this setting.
+ */
+function TtsVoiceSelect() {
+  const { t } = useTranslation();
+  const ttsVoice = useAppStore((s) => s.settings?.ttsVoice ?? "Kore");
+  const patchSettings = useAppStore((s) => s.patchSettings);
+  const [voices, setVoices] = useState<string[]>([]);
+
+  useEffect(() => {
+    ipc
+      .ttsVoices()
+      .then((v) => setVoices(Array.isArray(v) ? v : []))
+      .catch(() => setVoices([]));
+  }, []);
+
+  const items = (voices?.length ? voices : [ttsVoice]).map((v) => ({ id: v }));
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-caption text-muted shrink-0 hidden sm:inline">
+        {t("voice.voiceLabel")}
+      </span>
+      <SelectRoot
+        selectedKey={ttsVoice}
+        onSelectionChange={(key) => void patchSettings({ ttsVoice: String(key) })}
+        aria-label={t("voice.voiceLabel")}
+      >
+        <SelectTrigger className="lt-press inline-flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong min-w-[120px]">
+          <SelectValue className="flex-1 text-left truncate" />
+          <SelectIndicator />
+        </SelectTrigger>
+        <SelectPopover>
+          <ListBox items={items} className="max-h-72 overflow-y-auto">
+            {(item) => (
+              <ListBoxItem key={item.id} id={item.id} textValue={item.id}>
+                {item.id}
+              </ListBoxItem>
+            )}
+          </ListBox>
+        </SelectPopover>
+      </SelectRoot>
     </div>
   );
 }

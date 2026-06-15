@@ -194,6 +194,69 @@ struct Stream {
     channels: usize,
 }
 
+/// True when a capture endpoint name looks like a render-loopback / monitor mix
+/// ("CABLE Output", "Stereo Mix" / "Стерео микшер", "What U Hear", "Wave Out Mix").
+/// Selecting one as the OUT microphone makes the session capture the call's own
+/// audio and translate the peer straight back to themselves, so we never use one
+/// as the mic — and the UI filters them out of the picker.
+pub fn is_loopback_capture_name(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("cable output")
+        || n.contains("stereo mix")
+        || n.contains("стерео микшер")
+        || n.contains("what u hear")
+        || n.contains("what you hear")
+        || n.contains("wave out mix")
+        || n.contains("loopback")
+}
+
+/// Open and activate the microphone audio client, preferring the saved
+/// `device_id` but transparently falling back to the system default capture
+/// device when it is unusable. Falls back when: no id is set; the id no longer
+/// resolves or fails to activate (unplugged / disabled → `0x80070002`); or the id
+/// points at a loopback/monitor endpoint (which would feed the call audio back
+/// into the OUT translation). This keeps a stale saved mic from hard-failing the
+/// whole session — the previous behaviour the user saw as
+/// "failed to get IAudioClient … 0x80070002".
+fn open_mic_audio_client(device_id: Option<&str>) -> anyhow::Result<wasapi::AudioClient> {
+    let enumerator = wasapi::DeviceEnumerator::new()
+        .map_err(|e| anyhow::anyhow!("failed to create device enumerator: {e}"))?;
+
+    if let Some(id) = device_id {
+        match try_open_mic_client(&enumerator, id) {
+            Ok(client) => return Ok(client),
+            Err(e) => {
+                tracing::warn!("configured mic unusable ({e}); falling back to the default mic");
+            }
+        }
+    }
+
+    let device = enumerator
+        .get_default_device(&wasapi::Direction::Capture)
+        .map_err(|e| anyhow::anyhow!("failed to open default capture device: {e}"))?;
+    device
+        .get_iaudioclient()
+        .map_err(|e| anyhow::anyhow!("failed to get IAudioClient (default mic): {e}"))
+}
+
+/// Try to open+activate the saved capture device by id, rejecting loopback/monitor
+/// endpoints. Any error here makes the caller fall back to the default mic.
+fn try_open_mic_client(
+    enumerator: &wasapi::DeviceEnumerator,
+    id: &str,
+) -> anyhow::Result<wasapi::AudioClient> {
+    let device = enumerator
+        .get_device(id)
+        .map_err(|e| anyhow::anyhow!("get_device: {e}"))?;
+    let name = device.get_friendlyname().unwrap_or_default();
+    if is_loopback_capture_name(&name) {
+        anyhow::bail!("'{name}' is a loopback/monitor device");
+    }
+    device
+        .get_iaudioclient()
+        .map_err(|e| anyhow::anyhow!("get_iaudioclient: {e}"))
+}
+
 /// Open the device, initialize the audio client, and start the stream.
 fn setup_stream(source: &CaptureSource) -> anyhow::Result<Stream> {
     // COM (MTA) for this thread. Tolerate "already initialized" like the rest of
@@ -208,19 +271,7 @@ fn setup_stream(source: &CaptureSource) -> anyhow::Result<Stream> {
     // crate's `record_application` example.
     let (mut audio_client, buffer_duration_hns) = match source {
         CaptureSource::Mic { device_id } => {
-            let enumerator = wasapi::DeviceEnumerator::new()
-                .map_err(|e| anyhow::anyhow!("failed to create device enumerator: {e}"))?;
-            let device = match device_id {
-                Some(id) => enumerator
-                    .get_device(id)
-                    .map_err(|e| anyhow::anyhow!("failed to open capture device {id}: {e}"))?,
-                None => enumerator
-                    .get_default_device(&wasapi::Direction::Capture)
-                    .map_err(|e| anyhow::anyhow!("failed to open default capture device: {e}"))?,
-            };
-            let audio_client = device
-                .get_iaudioclient()
-                .map_err(|e| anyhow::anyhow!("failed to get IAudioClient: {e}"))?;
+            let audio_client = open_mic_audio_client(device_id.as_deref())?;
             let (_default_period, min_period) = audio_client
                 .get_device_period()
                 .map_err(|e| anyhow::anyhow!("failed to get device period: {e}"))?;
@@ -436,6 +487,20 @@ mod tests {
         assert!(pid_alive(std::process::id()));
         // An absurdly high pid cannot exist on Windows (pids are far smaller).
         assert!(!pid_alive(4_000_000_000));
+    }
+
+    #[test]
+    fn loopback_capture_names_are_detected() {
+        // Real render-loopback / monitor endpoints that must never be used as a mic.
+        assert!(is_loopback_capture_name("CABLE Output (VB-Audio Virtual Cable)"));
+        assert!(is_loopback_capture_name("Stereo Mix (Realtek(R) Audio)"));
+        assert!(is_loopback_capture_name("Стерео микшер (Realtek)"));
+        assert!(is_loopback_capture_name("What U Hear (Sound Blaster)"));
+        assert!(is_loopback_capture_name("Wave Out Mix"));
+        // Genuine microphones must pass through.
+        assert!(!is_loopback_capture_name("Microphone (USB Audio Device)"));
+        assert!(!is_loopback_capture_name("Микрофон (Realtek High Definition Audio)"));
+        assert!(!is_loopback_capture_name("Headset Microphone (Jabra)"));
     }
 
     #[test]

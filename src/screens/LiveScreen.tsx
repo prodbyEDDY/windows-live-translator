@@ -27,7 +27,7 @@ import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { IconWaveform } from "../components/Icons";
-import { looksLikeHeadphones } from "../lib/echo";
+import { looksLikeHeadphones, looksLikeSpeakers } from "../lib/echo";
 import { formatDuration } from "../lib/format";
 
 export function LiveScreen() {
@@ -40,30 +40,38 @@ export function LiveScreen() {
   const liveState = useAppStore((s) => s.liveState);
   const transcript = useAppStore((s) => s.transcript);
   const lastError = useAppStore((s) => s.lastError);
+  const notice = useAppStore((s) => s.notice);
   const appPid = useAppStore((s) => s.appPid);
   const setAppPid = useAppStore((s) => s.setAppPid);
   const refreshApps = useAppStore((s) => s.refreshApps);
   const clearTranscript = useAppStore((s) => s.clearTranscript);
   const setScreen = useAppStore((s) => s.setScreen);
   const setLastError = useAppStore((s) => s.setLastError);
+  const setNotice = useAppStore((s) => s.setNotice);
 
-  // Dismissable echo warning
-  const [echoDismissed, setEchoDismissed] = useState(false);
   // Clear-transcript confirmation dialog
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const captureMode = settings?.captureMode ?? "system";
   const cablePresent = devices?.cablePresent ?? false;
 
-  // Echo warning: check if output device name looks like headphones
-  const outputDeviceName = (() => {
-    if (!settings?.outputId) return null;
-    return devices?.outputs.find((d) => d.id === settings.outputId)?.name ?? null;
+  // Echo warning: resolve the device the user will actually hear on — the chosen
+  // output, or (when left on "system default") whatever Windows marks default —
+  // and warn when it looks like loudspeakers. Acoustic feedback through speakers
+  // is the dominant cause of "the peer hears themselves". Previously the warning
+  // was skipped entirely when no output was explicitly picked (the common case
+  // for a non-technical user), so it never showed; now it covers the default too.
+  const effectiveOutputName = (() => {
+    const outs = devices?.outputs ?? [];
+    if (settings?.outputId) {
+      return outs.find((d) => d.id === settings.outputId)?.name ?? null;
+    }
+    return outs.find((d) => d.isDefault)?.name ?? null;
   })();
   const showEchoWarning =
-    !echoDismissed &&
-    outputDeviceName != null &&
-    !looksLikeHeadphones(outputDeviceName);
+    effectiveOutputName != null &&
+    !looksLikeHeadphones(effectiveOutputName) &&
+    looksLikeSpeakers(effectiveOutputName);
 
   // Map error keys to translated messages at render time. Known backend codes
   // map to friendly copy; any other raw string is wrapped in the generic
@@ -187,6 +195,7 @@ export function LiveScreen() {
         {(keyStatus?.state !== "valid" ||
           !cablePresent ||
           showEchoWarning ||
+          notice ||
           displayedError) && (
           <div className="flex flex-col gap-2 shrink-0">
             {keyStatus && keyStatus.state !== "valid" && (
@@ -210,7 +219,13 @@ export function LiveScreen() {
                 tone="warn"
                 title={t("live.alertEcho")}
                 description={t("live.alertEchoDesc")}
-                onDismiss={() => setEchoDismissed(true)}
+              />
+            )}
+            {notice && (
+              <Banner
+                tone="warn"
+                description={notice}
+                onDismiss={() => setNotice(null)}
               />
             )}
             {displayedError && (

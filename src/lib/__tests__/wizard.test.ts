@@ -52,6 +52,8 @@ describe("buildTestConfig", () => {
     wizardDone: false,
     ttsVoice: "Puck",
     idlePassthrough: true,
+    idleAutoStop: true,
+    settingsSchemaVersion: 1,
   };
 
   it("forces test mode, system capture, and clears appPid", () => {

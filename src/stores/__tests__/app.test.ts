@@ -47,6 +47,8 @@ const BASE_SETTINGS: Settings = {
   wizardDone: true,
   ttsVoice: "Kore",
   idlePassthrough: true,
+  idleAutoStop: true,
+  settingsSchemaVersion: 1,
 };
 
 beforeEach(() => {

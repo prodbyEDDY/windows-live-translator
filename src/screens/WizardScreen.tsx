@@ -8,6 +8,7 @@ import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { WaveformGlyph, IconCheck } from "../components/Icons";
 import { buildDeviceOptions, DeviceSelect } from "./SettingsScreen";
+import { isLoopbackCaptureDevice } from "../lib/echo";
 import { looksLikeHeadphones } from "../lib/echo";
 import { ipc } from "../lib/ipc";
 import {
@@ -395,7 +396,11 @@ function StepDevices({ t }: { t: (k: string) => string }) {
 
   const inputDevices = devices?.inputs ?? [];
   const outputDevices = devices?.outputs ?? [];
-  const micOptions = buildDeviceOptions(inputDevices);
+  // Hide render-loopback / monitor endpoints (e.g. "CABLE Output", "Stereo Mix")
+  // from the mic picker — selecting one feeds the call audio back to the peer.
+  const micOptions = buildDeviceOptions(
+    inputDevices.filter((d) => !isLoopbackCaptureDevice(d.name))
+  );
   const outputOptions = buildDeviceOptions(outputDevices);
   const sysDefault = t("settings.audio.systemDefault");
 

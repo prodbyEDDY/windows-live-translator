@@ -128,8 +128,12 @@ impl Drop for PlaybackHandle {
 /// the stream started (returning the [`PlaybackHandle`]) or that
 /// initialization failed (returning the error). The thread is never left
 /// running silently on failure.
-pub fn start_playback(device_id: Option<String>, src_rate: usize) -> anyhow::Result<PlaybackHandle> {
-    start_playback_with_mix(device_id, src_rate, None)
+pub fn start_playback(
+    device_id: Option<String>,
+    src_rate: usize,
+    allow_default_fallback: bool,
+) -> anyhow::Result<PlaybackHandle> {
+    start_playback_with_mix(device_id, src_rate, None, allow_default_fallback)
 }
 
 /// Start playback to `device_id`, optionally mixing an original-voice bed under
@@ -144,6 +148,7 @@ pub fn start_playback_with_mix(
     device_id: Option<String>,
     src_rate: usize,
     mix: Option<MixConfig>,
+    allow_default_fallback: bool,
 ) -> anyhow::Result<PlaybackHandle> {
     let stop = Arc::new(AtomicBool::new(false));
     let queued_samples = Arc::new(AtomicUsize::new(0));
@@ -158,7 +163,16 @@ pub fn start_playback_with_mix(
     let join = std::thread::Builder::new()
         .name("audio-render".to_string())
         .spawn(move || {
-            render_thread(device_id, src_rate, thread_stop, thread_queued, rx, ready_tx, mix);
+            render_thread(
+                device_id,
+                src_rate,
+                thread_stop,
+                thread_queued,
+                rx,
+                ready_tx,
+                mix,
+                allow_default_fallback,
+            );
         })?;
 
     // Block until the thread reports readiness. A disconnect (thread panicked
@@ -195,8 +209,9 @@ fn render_thread(
     rx: Receiver<Vec<i16>>,
     ready_tx: Sender<anyhow::Result<()>>,
     mix: Option<MixConfig>,
+    allow_default_fallback: bool,
 ) {
-    match setup_stream(device_id) {
+    match setup_stream(device_id, allow_default_fallback) {
         Ok(stream) => {
             let _ = ready_tx.send(Ok(()));
             render_loop(stream, src_rate, stop, &queued_samples, &rx, mix);
@@ -214,8 +229,43 @@ struct Stream {
     event: wasapi::Handle,
 }
 
+/// Resolve and activate the render audio client, optionally falling back to the
+/// system default output when the saved id is unusable.
+///
+/// `allow_default_fallback` MUST be `false` for the VB-CABLE sink (the OUT
+/// translation and the idle passthrough): if the cable id ever fails to open we
+/// must error, NOT silently render to the user's speakers — that would both drop
+/// the peer's audio and risk feeding the translation back into the mic. It is
+/// `true` for the user's headphone (IN) sink, so a stale saved output device
+/// degrades gracefully to the default instead of failing the whole session.
+fn open_render_audio_client(
+    enumerator: &wasapi::DeviceEnumerator,
+    device_id: Option<&str>,
+    allow_default_fallback: bool,
+) -> anyhow::Result<wasapi::AudioClient> {
+    if let Some(id) = device_id {
+        match enumerator.get_device(id).and_then(|d| d.get_iaudioclient()) {
+            Ok(client) => return Ok(client),
+            Err(e) => {
+                if !allow_default_fallback {
+                    return Err(anyhow::anyhow!("failed to open render device {id}: {e}"));
+                }
+                tracing::warn!(
+                    "configured output device {id} unusable ({e}); falling back to the default output"
+                );
+            }
+        }
+    }
+    let device = enumerator
+        .get_default_device(&wasapi::Direction::Render)
+        .map_err(|e| anyhow::anyhow!("failed to open default render device: {e}"))?;
+    device
+        .get_iaudioclient()
+        .map_err(|e| anyhow::anyhow!("failed to get IAudioClient (default output): {e}"))
+}
+
 /// Open the device, initialize the audio client, and start the stream.
-fn setup_stream(device_id: Option<String>) -> anyhow::Result<Stream> {
+fn setup_stream(device_id: Option<String>, allow_default_fallback: bool) -> anyhow::Result<Stream> {
     // COM (MTA) for this thread. Tolerate "already initialized" like the rest
     // of the codebase does; we never uninitialize.
     let _ = wasapi::initialize_mta().ok();
@@ -223,18 +273,8 @@ fn setup_stream(device_id: Option<String>) -> anyhow::Result<Stream> {
     let enumerator = wasapi::DeviceEnumerator::new()
         .map_err(|e| anyhow::anyhow!("failed to create device enumerator: {e}"))?;
 
-    let device = match device_id {
-        Some(ref id) => enumerator
-            .get_device(id)
-            .map_err(|e| anyhow::anyhow!("failed to open render device {id}: {e}"))?,
-        None => enumerator
-            .get_default_device(&wasapi::Direction::Render)
-            .map_err(|e| anyhow::anyhow!("failed to open default render device: {e}"))?,
-    };
-
-    let mut audio_client = device
-        .get_iaudioclient()
-        .map_err(|e| anyhow::anyhow!("failed to get IAudioClient: {e}"))?;
+    let mut audio_client =
+        open_render_audio_client(&enumerator, device_id.as_deref(), allow_default_fallback)?;
 
     // Request 48 kHz, 32-bit float, stereo. AUTOCONVERTPCM lets the audio
     // engine reformat this into whatever the device's native mix format is.
@@ -540,7 +580,7 @@ mod tests {
     #[test]
     #[ignore = "plays audible tone"]
     fn tone_2s() {
-        let h = start_playback(None, 24000).unwrap();
+        let h = start_playback(None, 24000, true).unwrap();
         for i in 0..20 {
             let chunk: Vec<i16> = (0..2400)
                 .map(|n| {

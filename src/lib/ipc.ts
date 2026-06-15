@@ -43,6 +43,10 @@ export interface Settings {
   /** When no session runs, pipe the raw mic into VB-CABLE so the peer hears the
    *  original (untranslated) voice instead of silence. */
   idlePassthrough: boolean;
+  /** Auto-close the live session after ~2 min with no translation activity. */
+  idleAutoStop: boolean;
+  /** Settings-file schema version (backend migration bookkeeping; not user-set). */
+  settingsSchemaVersion: number;
 }
 
 export interface LiveConfig {
@@ -52,7 +56,11 @@ export interface LiveConfig {
   outputId: string | null;
   captureMode: "app" | "system";
   appPid: number | null;
+  /** Same-language passthrough for the IN direction (peer → you). The backend
+   *  always sends echo=false to the OUT direction regardless of this. */
   echoTargetLanguage: boolean;
+  /** Auto-close the session after ~2 min with no translation activity. */
+  idleAutoStop: boolean;
   duckingEnabled: boolean;
   duckLevel: number;
   mixOriginal: boolean;
@@ -135,7 +143,11 @@ export const ipc = {
     invoke<void>("voice_record_start", { micId }),
   voiceRecordStop: (myLang: string, peerLang: string, ttsVoice: string) =>
     invoke<number>("voice_record_stop", { myLang, peerLang, ttsVoice }),
-  voiceRetry: (id: number) => invoke<void>("voice_retry", { id }),
+  /** Re-run a voice card's pipeline. Pass `targetLang` to re-translate into a
+   *  new language (used when the user changes the language then retries); omit it
+   *  to re-attempt with the row's existing target. */
+  voiceRetry: (id: number, targetLang?: string) =>
+    invoke<void>("voice_retry", { id, targetLang: targetLang ?? null }),
   voiceList: (search?: string) =>
     invoke<VoiceRecord[]>("voice_list", { search: search ?? null }),
   voiceGet: (id: number) => invoke<VoiceRecord | null>("voice_get", { id }),
@@ -183,4 +195,9 @@ export const ipc = {
     listen("voice:progress", (e) => cb(e.payload as VoiceProgressEvent)),
   onCost: (cb: (e: CostEvent) => void): Promise<UnlistenFn> =>
     listen("live:cost", (e) => cb(e.payload as CostEvent)),
+  /** Fired when the backend auto-closes an idle session to save credits. */
+  onAutoStop: (
+    cb: (e: { reason: string }) => void
+  ): Promise<UnlistenFn> =>
+    listen("live:auto_stop", (e) => cb(e.payload as { reason: string })),
 };
