@@ -51,6 +51,8 @@ describe("buildTestConfig", () => {
     uiLang: "ru",
     wizardDone: false,
     ttsVoice: "Puck",
+    ttsProvider: "gemini",
+    elevenVoiceId: "",
     idlePassthrough: true,
     idleAutoStop: true,
     settingsSchemaVersion: 1,

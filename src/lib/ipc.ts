@@ -40,6 +40,11 @@ export interface Settings {
   uiLang: string;
   wizardDone: boolean;
   ttsVoice: string;
+  /** Which engine voices recorded-message translations: Gemini prebuilt voices
+   *  or the user's ElevenLabs cloned voice. */
+  ttsProvider: "gemini" | "elevenlabs";
+  /** ElevenLabs cloned voice id (the API key lives in the OS keyring). */
+  elevenVoiceId: string;
   /** When no session runs, pipe the raw mic into VB-CABLE so the peer hears the
    *  original (untranslated) voice instead of silence. */
   idlePassthrough: boolean;
@@ -132,6 +137,12 @@ export const ipc = {
     invoke<Settings>("settings_set", { patch }),
   apiKeyStatus: () => invoke<KeyStatus>("api_key_status"),
   apiKeySet: (key: string) => invoke<KeyStatus>("api_key_set", { key }),
+  /** Optimistic presence check for a stored ElevenLabs key (no network). */
+  elevenlabsStatus: () => invoke<KeyStatus>("elevenlabs_status"),
+  /** Validate (get-voice) then store the ElevenLabs key + voice id. Pass a null
+   *  `key` to reuse the stored key while changing only the voice id. */
+  elevenlabsKeySet: (key: string | null, voiceId: string) =>
+    invoke<KeyStatus>("elevenlabs_key_set", { key, voiceId }),
   devicesList: () => invoke<DevicesPayload>("devices_list"),
   ttsVoices: () => invoke<string[]>("tts_voices"),
   audioAppsList: () => invoke<AppSession[]>("audio_apps_list"),

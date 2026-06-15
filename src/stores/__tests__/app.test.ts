@@ -46,6 +46,8 @@ const BASE_SETTINGS: Settings = {
   uiLang: "ru",
   wizardDone: true,
   ttsVoice: "Kore",
+  ttsProvider: "gemini",
+  elevenVoiceId: "",
   idlePassthrough: true,
   idleAutoStop: true,
   settingsSchemaVersion: 1,
