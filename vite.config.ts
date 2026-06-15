@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -45,5 +46,9 @@ export default defineConfig(async () => ({
   test: {
     environment: "jsdom",
     globals: true,
+    // Local git worktrees (gitignored) carry their own copies of these tests;
+    // running them from the parent project resolves a second React and fails on
+    // unrelated environment errors. Keep the suite scoped to this checkout.
+    exclude: [...configDefaults.exclude, "**/.worktrees/**"],
   },
 }));
