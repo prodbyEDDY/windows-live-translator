@@ -5,6 +5,12 @@ use std::{path::PathBuf, sync::Mutex};
 #[serde(rename_all = "lowercase")]
 pub enum CaptureMode { App, System }
 
+/// Which engine voices the translation of recorded voice messages: the built-in
+/// Gemini prebuilt voices, or the user's own ElevenLabs cloned voice.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TtsProvider { Gemini, Elevenlabs }
+
 // Fix #1: `deny_unknown_fields` removed so a settings.json written by a newer app version
 // (containing fields we don't know yet) silently round-trips instead of wiping all prefs.
 // Unknown-key enforcement is handled explicitly inside `patch()`.
@@ -28,6 +34,15 @@ pub struct Settings {
     pub ui_lang: String,
     pub wizard_done: bool,
     pub tts_voice: String,
+    /// Which engine voices recorded-message translations: Gemini prebuilt voices
+    /// (default) or the user's ElevenLabs cloned voice. Serde `default` keeps older
+    /// settings files loading (falls back to Gemini — see `default_tts_provider`).
+    #[serde(default = "default_tts_provider")]
+    pub tts_provider: TtsProvider,
+    /// The ElevenLabs cloned `voice_id` (non-secret; the API key lives in the OS
+    /// keyring). Empty until the user configures it. Serde `default` → "".
+    #[serde(default)]
+    pub eleven_voice_id: String,
     /// When no live session is running, pipe the raw microphone straight into
     /// the virtual cable so the peer still hears the (untranslated) original
     /// voice instead of silence. Lets the user leave their call app's mic set to
@@ -61,6 +76,11 @@ fn default_idle_passthrough() -> bool {
     true
 }
 
+/// Default voice provider for files predating the ElevenLabs feature.
+fn default_tts_provider() -> TtsProvider {
+    TtsProvider::Gemini
+}
+
 /// `true` default for boolean settings whose absence in an older file means "on".
 fn default_true() -> bool {
     true
@@ -89,6 +109,8 @@ impl Default for Settings {
             vad_economy: false,
             ui_lang: "ru".into(), wizard_done: false,
             tts_voice: "Kore".into(),
+            tts_provider: TtsProvider::Gemini,
+            eleven_voice_id: String::new(),
             idle_passthrough: true,
             idle_auto_stop: true,
             settings_schema_version: CURRENT_SCHEMA_VERSION,
@@ -223,6 +245,37 @@ mod tests {
         // Idle auto-stop is on by default; new installs start at the current schema.
         assert!(s.idle_auto_stop);
         assert_eq!(s.settings_schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn defaults_include_gemini_provider_and_empty_voice() {
+        let s = Settings::default();
+        assert_eq!(s.tts_provider, TtsProvider::Gemini);
+        assert_eq!(s.eleven_voice_id, "");
+    }
+
+    /// An older settings.json predating the ElevenLabs keys must still load,
+    /// defaulting to Gemini + empty voice id (serde `default`).
+    #[test]
+    fn load_tolerates_missing_elevenlabs_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"myLang":"en","peerLang":"ru"}"#).unwrap();
+        let store = SettingsStore::open(path).unwrap();
+        assert_eq!(store.get().tts_provider, TtsProvider::Gemini);
+        assert_eq!(store.get().eleven_voice_id, "");
+    }
+
+    #[test]
+    fn roundtrip_persists_elevenlabs_provider_and_voice() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path().join("s.json")).unwrap();
+        store
+            .patch(serde_json::json!({"ttsProvider": "elevenlabs", "elevenVoiceId": "abc123"}))
+            .unwrap();
+        let again = SettingsStore::open(dir.path().join("s.json")).unwrap();
+        assert_eq!(again.get().tts_provider, TtsProvider::Elevenlabs);
+        assert_eq!(again.get().eleven_voice_id, "abc123");
     }
 
     /// A pre-versioning settings.json (no schemaVersion, explicit
