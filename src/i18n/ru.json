@@ -203,6 +203,7 @@
   "voice": {
     "title": "Голосовые сообщения",
     "voiceLabel": "Голос",
+    "voiceCloneLabel": "🎙 Ваш голос",
     "recordButton": "Записать",
     "stopButton": "Стоп",
     "recordCap": "макс. 5:00",
@@ -217,6 +218,16 @@
       "synthesizing": "синтез",
       "done": "готово",
       "error": "ошибка"
+    },
+    "stageError": {
+      "no_api_key": "Нет ключа Gemini",
+      "read_failed": "Не удалось прочитать запись",
+      "transcribe_failed": "Не удалось распознать речь",
+      "synthesize_failed": "Не удалось синтезировать речь",
+      "encode_failed": "Не удалось закодировать аудио",
+      "el_no_key": "Нет ключа ElevenLabs — добавьте в настройках",
+      "el_no_voice": "Нет voice id ElevenLabs — добавьте в настройках",
+      "el_synth_failed": "Сбой синтеза ElevenLabs — проверьте ключ, голос и квоту"
     },
     "originalLabel": "Оригинал",
     "translationLabel": "Перевод",

@@ -203,6 +203,7 @@
   "voice": {
     "title": "Voice Messages",
     "voiceLabel": "Voice",
+    "voiceCloneLabel": "🎙 Your voice",
     "recordButton": "Record",
     "stopButton": "Stop",
     "recordCap": "max 5:00",
@@ -217,6 +218,16 @@
       "synthesizing": "synthesizing",
       "done": "done",
       "error": "error"
+    },
+    "stageError": {
+      "no_api_key": "No Gemini API key",
+      "read_failed": "Could not read the recording",
+      "transcribe_failed": "Transcription failed",
+      "synthesize_failed": "Speech synthesis failed",
+      "encode_failed": "Audio encoding failed",
+      "el_no_key": "No ElevenLabs API key — add it in Settings",
+      "el_no_voice": "No ElevenLabs voice id — add it in Settings",
+      "el_synth_failed": "ElevenLabs synthesis failed — check key, voice and quota"
     },
     "originalLabel": "Original",
     "translationLabel": "Translation",

@@ -133,6 +133,13 @@ export function VoiceCard({ record }: VoiceCardProps) {
   })();
 
   const errMsg = errorMessage(record.stage);
+  // Localize known pipeline error short-codes (incl. the ElevenLabs ones); fall
+  // back to the raw short for anything not in the map.
+  const errLabel = errMsg
+    ? i18n.exists(`voice.stageError.${errMsg}`)
+      ? t(`voice.stageError.${errMsg}`)
+      : errMsg
+    : null;
   const isProcessing = stageIsProcessing(record.stage);
   const isDone = record.stage === "done";
 
@@ -235,7 +242,7 @@ export function VoiceCard({ record }: VoiceCardProps) {
                   {stageName}
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{errMsg}</TooltipContent>
+              <TooltipContent>{errLabel}</TooltipContent>
             </Tooltip>
           ) : (
             <span className="inline-flex items-center gap-2">

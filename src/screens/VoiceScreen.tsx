@@ -297,6 +297,7 @@ export function VoiceScreen() {
  */
 function TtsVoiceSelect() {
   const { t } = useTranslation();
+  const provider = useAppStore((s) => s.settings?.ttsProvider ?? "gemini");
   const ttsVoice = useAppStore((s) => s.settings?.ttsVoice ?? "Kore");
   const patchSettings = useAppStore((s) => s.patchSettings);
   const [voices, setVoices] = useState<string[]>([]);
@@ -307,6 +308,17 @@ function TtsVoiceSelect() {
       .then((v) => setVoices(Array.isArray(v) ? v : []))
       .catch(() => setVoices([]));
   }, []);
+
+  // When the cloned voice is the active provider, the Gemini voice picker no
+  // longer applies — show a compact indicator instead (the voice id is managed
+  // in Settings).
+  if (provider === "elevenlabs") {
+    return (
+      <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-pill border border-cobalt/30 bg-cobalt-tint text-caption font-medium text-cobalt-deep">
+        {t("voice.voiceCloneLabel")}
+      </span>
+    );
+  }
 
   const items = (voices?.length ? voices : [ttsVoice]).map((v) => ({ id: v }));
 
