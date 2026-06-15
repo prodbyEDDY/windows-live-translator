@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ListBox,
@@ -214,6 +214,15 @@ function ElevenLabsField() {
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<KeyStatus | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Reflect a previously-stored key on mount (optimistic, like the Gemini chip),
+  // so reopening Settings shows the key is saved without a re-check.
+  useEffect(() => {
+    ipc
+      .elevenlabsStatus()
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
 
   async function handleSaveCheck() {
     const vid = voiceId.trim();
