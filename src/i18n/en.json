@@ -92,6 +92,7 @@
       "audio": "Audio",
       "translation": "Translation",
       "voice": "Voice messages",
+      "voiceClone": "Cloned voice (ElevenLabs)",
       "app": "Application"
     },
     "apiKey": {
@@ -137,6 +138,16 @@
       "sectionDesc": "Settings for translating voice messages (recording and dropped-in files).",
       "ttsVoice": "Speech voice (TTS)",
       "ttsVoiceHint": "The voice used to speak the translation of recorded messages. Voices differ in timbre and gender — e.g. Puck and Charon sound male, Kore and Zephyr female."
+    },
+    "voiceClone": {
+      "sectionDesc": "Voice the translation of your recorded messages in your own ElevenLabs cloned voice. The API key is stored only on this computer; the voice id in settings.",
+      "useClone": "Use my cloned voice for recorded messages",
+      "useCloneHint": "When on, recorded voice messages are voiced by ElevenLabs using the voice id below. When off, the built-in Gemini voice is used.",
+      "keyPlaceholder": "ElevenLabs API key",
+      "voiceIdPlaceholder": "Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM)",
+      "saveCheck": "Save / Check",
+      "getVoiceId": "Where do I find my Voice ID?",
+      "needConfig": "Enter and check a valid key + voice id to enable"
     },
     "app": {
       "uiLang": "Interface language",

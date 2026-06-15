@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ListBox,
@@ -13,6 +13,7 @@ import {
   SliderOutput,
   SliderThumb,
   SliderTrack,
+  Spinner,
   Switch,
   SwitchContent,
   SwitchControl,
@@ -20,10 +21,10 @@ import {
 } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../stores/app";
-import { ApiKeyField } from "../components/ApiKeyField";
+import { ApiKeyField, KeyStatusChip } from "../components/ApiKeyField";
 import { Banner } from "../components/Banner";
-import { IconCheck, IconCross } from "../components/Icons";
-import { type DeviceInfo } from "../lib/ipc";
+import { IconCheck, IconCross, IconEye, IconEyeOff } from "../components/Icons";
+import { ipc, type DeviceInfo, type KeyStatus } from "../lib/ipc";
 import { isLoopbackCaptureDevice } from "../lib/echo";
 import i18next from "../i18n";
 
@@ -195,6 +196,88 @@ export function DeviceSelect({
   );
 }
 
+/**
+ * ElevenLabs credential field: a password key input + a voice-id text input + a
+ * single "Save & check" that validates both against get-voice (one call proves
+ * the key AND the voice id), then stores the key in the OS keyring and the voice
+ * id in settings. An empty key reuses the stored one, so the voice id can be
+ * changed without re-typing the key. Mirrors {@link ApiKeyField}.
+ */
+function ElevenLabsField() {
+  const { t } = useTranslation();
+  const settings = useAppStore((s) => s.settings);
+  const patchSettings = useAppStore((s) => s.patchSettings);
+  const setLastError = useAppStore((s) => s.setLastError);
+
+  const [key, setKey] = useState("");
+  const [voiceId, setVoiceId] = useState(settings?.elevenVoiceId ?? "");
+  const [showKey, setShowKey] = useState(false);
+  const [status, setStatus] = useState<KeyStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSaveCheck() {
+    const vid = voiceId.trim();
+    if (!vid) return;
+    setLoading(true);
+    try {
+      const st = await ipc.elevenlabsKeySet(key.trim() || null, vid);
+      setStatus(st);
+      if (st.state === "valid") {
+        setKey("");
+        // Reflect the saved voice id in the store immediately so the provider
+        // toggle's "configured" gating updates without a reload (the backend
+        // already persisted it).
+        await patchSettings({ elevenVoiceId: vid });
+      }
+    } catch (e) {
+      setLastError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="relative">
+        <input
+          type={showKey ? "text" : "password"}
+          placeholder={t("settings.voiceClone.keyPlaceholder")}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          className="w-full h-11 pl-3.5 pr-10 rounded-input border border-hairline bg-surface text-body text-ink placeholder:text-muted hover:border-hairline-strong focus:border-cobalt outline-none transition-colors font-mono"
+        />
+        <button
+          type="button"
+          onClick={() => setShowKey((v) => !v)}
+          aria-label={showKey ? t("settings.apiKey.hide") : t("settings.apiKey.show")}
+          aria-pressed={showKey}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors rounded"
+        >
+          {showKey ? <IconEyeOff size={17} /> : <IconEye size={17} />}
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <input
+          type="text"
+          placeholder={t("settings.voiceClone.voiceIdPlaceholder")}
+          value={voiceId}
+          onChange={(e) => setVoiceId(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void handleSaveCheck()}
+          className="flex-1 min-w-56 h-11 px-3.5 rounded-input border border-hairline bg-surface text-body text-ink placeholder:text-muted hover:border-hairline-strong focus:border-cobalt outline-none transition-colors font-mono"
+        />
+        <button
+          onClick={() => void handleSaveCheck()}
+          disabled={loading || voiceId.trim().length === 0}
+          className="lt-press shrink-0 h-11 px-5 rounded-pill bg-cobalt hover:bg-cobalt-deep disabled:opacity-40 disabled:hover:bg-cobalt text-white text-caption font-medium inline-flex items-center justify-center min-w-24"
+        >
+          {loading ? <Spinner size="sm" /> : t("settings.voiceClone.saveCheck")}
+        </button>
+        <KeyStatusChip status={status} />
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen() {
   const { t } = useTranslation();
   const settings = useAppStore((s) => s.settings);
@@ -252,6 +335,36 @@ export function SettingsScreen() {
             className="text-caption text-cobalt hover:text-cobalt-deep hover:underline self-start rounded"
           >
             {t("settings.apiKey.getKey")}
+          </button>
+        </SettingsCard>
+
+        {/* ---- Cloned voice (ElevenLabs) ---- */}
+        <SettingsCard
+          title={t("settings.sections.voiceClone")}
+          description={t("settings.voiceClone.sectionDesc")}
+        >
+          <ElevenLabsField />
+          <SettingSwitch
+            selected={settings.ttsProvider === "elevenlabs"}
+            onChange={(c) =>
+              void patchSettings({ ttsProvider: c ? "elevenlabs" : "gemini" })
+            }
+            label={t("settings.voiceClone.useClone")}
+            hint={
+              settings.elevenVoiceId
+                ? t("settings.voiceClone.useCloneHint")
+                : t("settings.voiceClone.needConfig")
+            }
+          />
+          <button
+            onClick={() =>
+              void openUrl(
+                "https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/instant-voice-cloning"
+              )
+            }
+            className="text-caption text-cobalt hover:text-cobalt-deep hover:underline self-start rounded"
+          >
+            {t("settings.voiceClone.getVoiceId")}
           </button>
         </SettingsCard>
 
