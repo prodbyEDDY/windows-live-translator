@@ -1,6 +1,6 @@
 [package]
 name = "live-translator"
-version = "0.3.1"
+version = "0.4.0"
 description = "Live Translator - Windows real-time call translator"
 authors = ["you"]
 edition = "2021"
