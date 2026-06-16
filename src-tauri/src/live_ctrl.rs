@@ -67,8 +67,12 @@ const BRIDGE_RECV_TIMEOUT: Duration = Duration::from_millis(200);
 const LEVELS_TICK: Duration = Duration::from_millis(100);
 /// Cost-meter tick interval (1 second).
 const COST_TICK: Duration = Duration::from_secs(1);
-/// Auto-close the session after this long with no translation activity (no
-/// input/output transcript and no server audio on either direction). Protects a
+/// Auto-close the session after this long with no TRANSLATED output on either
+/// direction (no `OutputTranscript`). Input transcripts (the peer's *original*
+/// speech), raw server audio, and turn boundaries deliberately do NOT count: a
+/// call that keeps streaming sound but produces no translation — e.g. echoed
+/// passthrough, or a direction that never translates — must still time out. This
+/// matches "stop after 2 minutes with no translated phrases", and protects a
 /// forgotten session from billing dead air.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -346,9 +350,10 @@ impl LiveController {
         let state = Arc::new(Mutex::new(initial));
 
         // Session-activity tracking for the idle auto-stop: `last_activity` holds
-        // the millis-since-`session_start` of the most recent translation event
-        // (input/output transcript or server audio, either direction). The cost
-        // task watches it and auto-stops after IDLE_TIMEOUT of no activity.
+        // the millis-since-`session_start` of the most recent TRANSLATED phrase
+        // (an `OutputTranscript`, either direction) — NOT input transcripts or raw
+        // server audio, which flow even when nothing is being translated. The cost
+        // task watches it and auto-stops after IDLE_TIMEOUT with no translated output.
         let session_start = std::time::Instant::now();
         let last_activity = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
@@ -636,9 +641,13 @@ impl LiveController {
         last_activity: Arc<std::sync::atomic::AtomicU64>,
     ) {
         tauri::async_runtime::spawn(async move {
-            // Bump the shared idle clock whenever real translation activity flows
-            // (server audio or either transcript). The cost task reads it to
-            // auto-stop after IDLE_TIMEOUT of silence.
+            // Bump the shared idle clock ONLY when a TRANSLATED phrase is produced
+            // (an `OutputTranscript`). Input transcripts (the peer's original
+            // speech), raw server audio (which can be echoed passthrough of the
+            // original), and turn boundaries deliberately do NOT count — otherwise
+            // any ongoing call would keep a non-translating session alive forever.
+            // The cost task reads this to auto-stop after IDLE_TIMEOUT with no
+            // translated output.
             let mark_activity = || {
                 last_activity.store(
                     session_start.elapsed().as_millis() as u64,
@@ -651,13 +660,17 @@ impl LiveController {
                 };
                 match ev {
                     SessionEvent::Audio(pcm) => {
-                        mark_activity();
+                        // NB: server audio does NOT bump the idle clock — only a
+                        // translated phrase (OutputTranscript) does. Raw audio can
+                        // be echoed passthrough of the peer's original, which must
+                        // still be allowed to time out.
                         // Drop on backpressure — playback is bursty and the render
                         // thread must never be blocked by us.
                         let _ = playback_tx.try_send(pcm);
                     }
                     SessionEvent::InputTranscript(text) => {
-                        mark_activity();
+                        // The peer's ORIGINAL (untranslated) speech — not a
+                        // translation, so it must NOT reset the idle watchdog.
                         let _ = app.emit(
                             "live:transcript",
                             serde_json::json!({
@@ -668,6 +681,8 @@ impl LiveController {
                         );
                     }
                     SessionEvent::OutputTranscript(text) => {
+                        // A translated phrase — the ONLY event that counts as
+                        // activity for the idle auto-stop watchdog.
                         mark_activity();
                         let _ = app.emit(
                             "live:transcript",
@@ -696,7 +711,9 @@ impl LiveController {
                         break;
                     }
                     SessionEvent::TurnComplete => {
-                        mark_activity();
+                        // A turn boundary is not itself a translation, so it does
+                        // NOT reset the idle watchdog (a silent turn still counts
+                        // toward the no-translated-output timeout).
                         // Close the current transcript line for this direction.
                         // The frontend treats kind "close" as "finalize the
                         // in-progress line" (contract agreed with the UI).
@@ -754,9 +771,13 @@ impl LiveController {
     /// user's "it stopped translating, so it stopped charging" mental model).
     /// Emits `live:cost { seconds, estimatedUsd }` on every tick.
     ///
-    /// Idle auto-stop: once a direction has reached `"running"`, if no translation
-    /// activity (`last_activity`, fed by [`spawn_events`]) has occurred for
-    /// [`IDLE_TIMEOUT`], emit `live:auto_stop { reason: "idle" }` ONCE and exit.
+    /// Idle auto-stop: once a direction has reached `"running"`, if no TRANSLATED
+    /// output (`last_activity`, bumped only by the `OutputTranscript` arm of
+    /// [`spawn_events`]) has occurred for [`IDLE_TIMEOUT`], emit
+    /// `live:auto_stop { reason: "idle" }` ONCE and exit. Because a fresh
+    /// `last_activity` starts at 0 and the check is gated on `ever_running`, a
+    /// session that connects but never translates correctly stops ~IDLE_TIMEOUT
+    /// after it first reached `"running"`.
     /// The frontend reacts by calling `live_stop` (the authoritative teardown that
     /// owns the controller). We do NOT touch `stop_flag` here: leaving the
     /// controller in place but flag-stopped would strand it in `AppState` and make
