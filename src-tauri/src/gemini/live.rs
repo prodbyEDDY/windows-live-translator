@@ -192,6 +192,19 @@ async fn run_session(
         let (mut sink, mut stream) = ws.split();
 
         let setup = setup_message(&cfg.target_lang, cfg.echo, resume_handle.as_deref());
+        // Surface the exact translation config on the wire so the Logs page can
+        // confirm whether same-language passthrough (echoTargetLanguage) is really
+        // being requested for this direction. `echo=true` on the IN session means
+        // "when the peer speaks the user's language, pass the original through
+        // instead of translating it".
+        tracing::info!(
+            target: "gemini",
+            label = cfg.label,
+            target_lang = %cfg.target_lang,
+            echo_target_language = cfg.echo,
+            resumed = resume_handle.is_some(),
+            "live setup sent (translationConfig)"
+        );
         if sink
             .send(Message::Text(setup.to_string().into()))
             .await
