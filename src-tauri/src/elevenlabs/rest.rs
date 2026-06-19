@@ -16,9 +16,12 @@
 //! * get-voice — `GET /v1/voices/{voice_id}` with `xi-api-key`.
 
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use serde::Serialize;
 
 use crate::gemini::rest::KeyStatus;
+use crate::logbus::mask_secret;
 
 const API_BASE: &str = "https://api.elevenlabs.io/v1";
 
@@ -77,6 +80,175 @@ pub fn classify_elevenlabs(status: u16, body: &str) -> KeyStatus {
     }
 }
 
+/// A classified ElevenLabs TTS failure for logging + self-test reporting.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevenTtsError {
+    pub http_status: u16,
+    pub code: String,
+    pub human: String,
+}
+
+/// Map an ElevenLabs error (`status` + response `body`) to a stable code +
+/// human sentence. Scans the body for documented status strings first (more
+/// specific than the HTTP family), then falls back to the HTTP status. This is
+/// the single place the documented ElevenLabs taxonomy is encoded.
+pub fn classify_elevenlabs_tts_error(status: u16, body: &str) -> ElevenTtsError {
+    let lower = body.to_ascii_lowercase();
+    let code = if lower.contains("detected_unusual_activity") {
+        "detected_unusual_activity"
+    } else if lower.contains("quota_exceeded") || lower.contains("insufficient_credits") {
+        "quota_exceeded"
+    } else if lower.contains("voice_not_found") {
+        "voice_not_found"
+    } else if lower.contains("model_not_found") {
+        "model_not_found"
+    } else if lower.contains("invalid_api_key") {
+        "invalid_api_key"
+    } else if lower.contains("missing_permission") {
+        "missing_permissions"
+    } else if lower.contains("text_too_long") {
+        "text_too_long"
+    } else if lower.contains("concurrent") {
+        "concurrent_limit_exceeded"
+    } else if lower.contains("rate_limit") || lower.contains("too_many_requests") {
+        "rate_limit_exceeded"
+    } else {
+        match status {
+            400 => "validation_error",
+            401 => "authentication_error",
+            402 => "payment_required",
+            403 => "authorization_error",
+            404 => "not_found",
+            409 => "conflict",
+            429 => "rate_limit_error",
+            500 => "internal_error",
+            503 => "service_unavailable",
+            _ => "unknown_error",
+        }
+    };
+    ElevenTtsError {
+        http_status: status,
+        code: code.to_string(),
+        human: human_for_eleven_code(code).to_string(),
+    }
+}
+
+fn human_for_eleven_code(code: &str) -> &'static str {
+    match code {
+        "detected_unusual_activity" => "ElevenLabs flagged this IP and disabled Free-tier usage (VPN/datacenter/region). A paid plan or a non-flagged network is required.",
+        "quota_exceeded" => "Out of ElevenLabs credits/quota for this billing window.",
+        "voice_not_found" => "The voice_id does not exist for this account.",
+        "model_not_found" => "The requested model is not available for this account.",
+        "invalid_api_key" => "The ElevenLabs API key is invalid.",
+        "missing_permissions" => "The API key lacks permission for this voice/model/feature.",
+        "text_too_long" => "The text exceeds the per-request character limit.",
+        "concurrent_limit_exceeded" => "Too many concurrent ElevenLabs requests.",
+        "rate_limit_exceeded" | "rate_limit_error" => "ElevenLabs rate limit hit; retry with backoff.",
+        "authentication_error" => "Authentication failed (invalid or missing key).",
+        "authorization_error" => "Not authorized for this action.",
+        "payment_required" => "Insufficient credits for this operation.",
+        "validation_error" => "The request parameters were invalid.",
+        "internal_error" => "ElevenLabs internal server error.",
+        "service_unavailable" => "ElevenLabs is temporarily unavailable.",
+        _ => "Unrecognized ElevenLabs error.",
+    }
+}
+
+/// A connection-probe result for the self-test (no audio is recorded).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevenProbe {
+    pub ok: bool,
+    pub http_status: Option<u16>,
+    pub code: Option<String>,
+    pub detail: String,
+}
+
+/// Probe the credential + voice via get-voice, logging the exact outcome.
+pub async fn probe_validate(api_key: &str, voice_id: &str) -> ElevenProbe {
+    let url = format!("{API_BASE}/voices/{voice_id}");
+    tracing::info!(target: "elevenlabs", voice_id = %mask_secret(voice_id), key = %mask_secret(api_key), "self-test: validate (get-voice) →");
+    match client().get(&url).header("xi-api-key", api_key).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            if (200..300).contains(&status) {
+                tracing::info!(target: "elevenlabs", http_status = status, "self-test: validate OK");
+                ElevenProbe {
+                    ok: true,
+                    http_status: Some(status),
+                    code: None,
+                    detail: "voice found".into(),
+                }
+            } else {
+                let err = classify_elevenlabs_tts_error(status, &body);
+                tracing::error!(target: "elevenlabs", http_status = status, code = %err.code, body = %body, "self-test: validate FAILED");
+                ElevenProbe {
+                    ok: false,
+                    http_status: Some(status),
+                    code: Some(err.code),
+                    detail: err.human,
+                }
+            }
+        }
+        Err(e) => {
+            let detail = format!("network: {}", e.without_url());
+            tracing::error!(target: "elevenlabs", error = %detail, "self-test: validate network error");
+            ElevenProbe {
+                ok: false,
+                http_status: None,
+                code: Some("network_error".into()),
+                detail,
+            }
+        }
+    }
+}
+
+/// Probe synthesis with a tiny phrase, logging the exact outcome.
+pub async fn probe_synth(api_key: &str, voice_id: &str, model_id: &str) -> ElevenProbe {
+    let url = convert_url(voice_id);
+    let body = serde_json::json!({ "text": "Test.", "model_id": model_id });
+    let started = Instant::now();
+    tracing::info!(target: "elevenlabs", voice_id = %mask_secret(voice_id), model = model_id, "self-test: synth (convert) →");
+    match client().post(&url).header("xi-api-key", api_key).json(&body).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            if (200..300).contains(&status) {
+                let bytes = resp.bytes().await.map(|b| b.len()).unwrap_or(0);
+                let ms = started.elapsed().as_millis() as u64;
+                tracing::info!(target: "elevenlabs", http_status = status, bytes, latency_ms = ms, "self-test: synth OK");
+                ElevenProbe {
+                    ok: true,
+                    http_status: Some(status),
+                    code: None,
+                    detail: format!("{bytes} bytes in {ms} ms"),
+                }
+            } else {
+                let text = resp.text().await.unwrap_or_default();
+                let err = classify_elevenlabs_tts_error(status, &text);
+                tracing::error!(target: "elevenlabs", http_status = status, code = %err.code, body = %text, "self-test: synth FAILED");
+                ElevenProbe {
+                    ok: false,
+                    http_status: Some(status),
+                    code: Some(err.code),
+                    detail: err.human,
+                }
+            }
+        }
+        Err(e) => {
+            let detail = format!("network: {}", e.without_url());
+            tracing::error!(target: "elevenlabs", error = %detail, "self-test: synth network error");
+            ElevenProbe {
+                ok: false,
+                http_status: None,
+                code: Some("network_error".into()),
+                detail,
+            }
+        }
+    }
+}
+
 /// Synthesize `text` into the cloned `voice_id` using `model_id`. Returns raw
 /// PCM16 mono @ 24 kHz on success.
 pub async fn synthesize_elevenlabs(
@@ -87,6 +259,8 @@ pub async fn synthesize_elevenlabs(
 ) -> anyhow::Result<Vec<i16>> {
     let url = convert_url(voice_id);
     let body = serde_json::json!({ "text": text, "model_id": model_id });
+    let started = Instant::now();
+    tracing::info!(target: "elevenlabs", voice_id = %mask_secret(voice_id), key = %mask_secret(api_key), model = model_id, text_len = text.chars().count(), "TTS convert →");
     let resp = client()
         .post(&url)
         .header("xi-api-key", api_key)
@@ -95,16 +269,20 @@ pub async fn synthesize_elevenlabs(
         .await?;
 
     if !resp.status().is_success() {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
+        let err = classify_elevenlabs_tts_error(status, &body_text);
+        tracing::error!(target: "elevenlabs", http_status = status, code = %err.code, body = %body_text, latency_ms = started.elapsed().as_millis() as u64, "ElevenLabs TTS failed");
         anyhow::bail!("ElevenLabs TTS failed: HTTP {status}: {body_text}");
     }
 
     let bytes = resp.bytes().await?;
     let pcm = parse_pcm_s16le(&bytes);
     if pcm.is_empty() {
+        tracing::error!(target: "elevenlabs", bytes = bytes.len(), "ElevenLabs TTS returned no audio");
         anyhow::bail!("ElevenLabs TTS returned no audio");
     }
+    tracing::info!(target: "elevenlabs", samples = pcm.len(), latency_ms = started.elapsed().as_millis() as u64, "TTS convert OK");
     Ok(pcm)
 }
 
@@ -159,6 +337,58 @@ mod tests {
         assert!(matches!(classify_elevenlabs(422, "x"), KeyStatus::Invalid { .. }));
         assert!(matches!(classify_elevenlabs(429, "x"), KeyStatus::Error { .. }));
         assert!(matches!(classify_elevenlabs(500, "x"), KeyStatus::Error { .. }));
+    }
+
+    #[test]
+    fn classify_tts_error_body_scan_beats_status() {
+        // 401 with the unusual-activity marker → specific code, not generic auth.
+        let e = classify_elevenlabs_tts_error(
+            401,
+            r#"{"detail":{"status":"detected_unusual_activity","message":"Unusual activity detected. Free Tier usage disabled."}}"#,
+        );
+        assert_eq!(e.code, "detected_unusual_activity");
+        assert_eq!(e.http_status, 401);
+        assert!(!e.human.is_empty());
+    }
+
+    #[test]
+    fn classify_tts_error_known_codes() {
+        assert_eq!(
+            classify_elevenlabs_tts_error(404, r#"{"status":"voice_not_found"}"#).code,
+            "voice_not_found"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(402, r#"{"status":"quota_exceeded"}"#).code,
+            "quota_exceeded"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(400, r#"{"status":"text_too_long"}"#).code,
+            "text_too_long"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(429, r#"{"status":"too_many_concurrent"}"#).code,
+            "concurrent_limit_exceeded"
+        );
+    }
+
+    #[test]
+    fn classify_tts_error_falls_back_to_status_family() {
+        assert_eq!(
+            classify_elevenlabs_tts_error(401, "opaque").code,
+            "authentication_error"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(403, "opaque").code,
+            "authorization_error"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(500, "boom").code,
+            "internal_error"
+        );
+        assert_eq!(
+            classify_elevenlabs_tts_error(418, "teapot").code,
+            "unknown_error"
+        );
     }
 
     #[test]
