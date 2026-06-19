@@ -20,7 +20,10 @@ vi.mock("@tauri-apps/api/path", () => ({
 }));
 vi.mock("@crabnebula/tauri-plugin-drag", () => ({ startDrag: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(),
+  revealItemInDir: vi.fn(),
+}));
 vi.mock("../../lib/ipc", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../../lib/ipc")>();
   return {
@@ -47,6 +50,7 @@ import { HistoryScreen } from "../HistoryScreen";
 import { VoiceScreen } from "../VoiceScreen";
 import { LiveScreen } from "../LiveScreen";
 import { SettingsScreen } from "../SettingsScreen";
+import { LogsScreen } from "../LogsScreen";
 import { WizardScreen } from "../WizardScreen";
 
 describe("screens mount without throwing", () => {
@@ -61,6 +65,9 @@ describe("screens mount without throwing", () => {
   });
   it("SettingsScreen", () => {
     expect(() => render(<SettingsScreen />)).not.toThrow();
+  });
+  it("LogsScreen", () => {
+    expect(() => render(<LogsScreen />)).not.toThrow();
   });
   it("WizardScreen", () => {
     expect(() => render(<WizardScreen />)).not.toThrow();

@@ -16,7 +16,7 @@ import { appendTranscriptMut, type TranscriptLine } from "../lib/transcript";
 import { shouldSaveCall } from "../lib/history";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-export type Screen = "live" | "voice" | "history" | "settings" | "help" | "wizard";
+export type Screen = "live" | "voice" | "history" | "settings" | "help" | "logs" | "wizard";
 
 interface AppState {
   settings: Settings | null;

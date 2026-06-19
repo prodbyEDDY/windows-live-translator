@@ -8,6 +8,7 @@ import { SettingsScreen } from "./screens/SettingsScreen";
 import { VoiceScreen } from "./screens/VoiceScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { HelpScreen } from "./screens/HelpScreen";
+import { LogsScreen } from "./screens/LogsScreen";
 import { WizardScreen } from "./screens/WizardScreen";
 
 function App() {
@@ -36,6 +37,8 @@ function App() {
         return <VoiceScreen />;
       case "history":
         return <HistoryScreen />;
+      case "logs":
+        return <LogsScreen />;
       case "settings":
         return <SettingsScreen />;
       case "help":

@@ -3,6 +3,7 @@
     "live": "Live",
     "voice": "Voice",
     "history": "History",
+    "logs": "Logs",
     "settings": "Settings",
     "help": "Help"
   },
@@ -10,8 +11,29 @@
     "live": "Live Translation",
     "voice": "Voice Profiles",
     "history": "Translation History",
+    "logs": "Logs",
     "settings": "Settings",
     "wizard": "Initial Setup"
+  },
+  "logs": {
+    "diagnostics": "Diagnostics",
+    "testEleven": "Test ElevenLabs",
+    "testGemini": "Test Gemini",
+    "testing": "Testing…",
+    "pass": "OK",
+    "fail": "Failed",
+    "validate": "Validate",
+    "synth": "Synthesis",
+    "tts": "TTS",
+    "noKey": "no key stored",
+    "filterLevel": "Level",
+    "searchPlaceholder": "Filter logs…",
+    "clear": "Clear",
+    "export": "Export",
+    "openFolder": "Open folder",
+    "follow": "Follow",
+    "empty": "No logs yet. Reproduce the issue and entries will appear here.",
+    "exported": "Logs exported."
   },
   "common": {
     "start": "Start",

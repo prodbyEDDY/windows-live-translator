@@ -116,6 +116,17 @@ export function IconHelp(props: IconProps) {
   );
 }
 
+/** Terminal window with a prompt — Logs. */
+export function IconLogs(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 9l2.5 2L7 13" />
+      <path d="M12.5 13H17" />
+    </svg>
+  );
+}
+
 /** Box with an out-arrow — external link. */
 export function IconExternalLink(props: IconProps) {
   return (

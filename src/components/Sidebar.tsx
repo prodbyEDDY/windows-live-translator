@@ -7,6 +7,7 @@ import {
   IconHistory,
   IconGear,
   IconHelp,
+  IconLogs,
   IconCheck,
   IconCross,
 } from "./Icons";
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "live", labelKey: "nav.live", icon: IconWaveform },
   { id: "voice", labelKey: "nav.voice", icon: IconMicMessage },
   { id: "history", labelKey: "nav.history", icon: IconHistory },
+  { id: "logs", labelKey: "nav.logs", icon: IconLogs },
   { id: "settings", labelKey: "nav.settings", icon: IconGear },
   { id: "help", labelKey: "nav.help", icon: IconHelp },
 ];
