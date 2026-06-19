@@ -355,6 +355,7 @@
       "generic": "Something went wrong. Details: {{raw}}"
     },
     "pickAppPlaceholder": "Pick an application…",
-    "langLockedHint": "Languages are locked during a session — stop the translation first"
+    "langLockedHint": "Languages are locked during a session — stop the translation first",
+    "echoSessionHint": "Applies to incoming audio (peer → you) and takes effect at the start of a session."
   }
 }

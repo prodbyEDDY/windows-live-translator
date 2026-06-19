@@ -18,6 +18,10 @@ import {
   SelectPopover,
   SelectTrigger,
   SelectValue,
+  Switch,
+  SwitchContent,
+  SwitchControl,
+  SwitchThumb,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -114,6 +118,13 @@ export function LiveScreen() {
   );
   const outputOptions = buildDeviceOptions(devices?.outputs ?? []);
   const sysDefault = t("settings.audio.systemDefault");
+
+  // The live setup (languages, echo) is sent once per connection and can't be
+  // re-targeted mid-session, so session-scoped controls lock while running —
+  // mirroring the header language pills.
+  const phase = liveState?.phase ?? "off";
+  const sessionLive =
+    phase === "running" || phase === "connecting" || phase === "reconnecting";
 
   return (
     <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
@@ -221,6 +232,31 @@ export function LiveScreen() {
             sysDefault={sysDefault}
             onOpen={() => void refreshDevices()}
           />
+        </div>
+
+        {/* ---- Same-language passthrough (IN direction) ---- */}
+        {/* Applies to the incoming peer→you direction and is sent once per
+            connection, so it locks while a session runs (set it before Start). */}
+        <div
+          className="flex flex-col gap-1 shrink-0"
+          title={sessionLive ? t("live.langLockedHint") : undefined}
+        >
+          <Switch
+            isSelected={settings.echoTargetLanguage}
+            onChange={(v) => void patchSettings({ echoTargetLanguage: v })}
+            isDisabled={sessionLive}
+            className="group flex items-center gap-3"
+          >
+            <SwitchControl className="data-[selected]:bg-cobalt">
+              <SwitchThumb />
+            </SwitchControl>
+            <SwitchContent className="text-caption text-ink">
+              {t("settings.translation.echoTargetLanguage")}
+            </SwitchContent>
+          </Switch>
+          <p className="text-label text-muted leading-snug ml-11 max-w-prose">
+            {t("live.echoSessionHint")}
+          </p>
         </div>
 
         {/* ---- Banners ---- */}
