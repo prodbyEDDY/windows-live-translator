@@ -6,6 +6,7 @@ pub mod voice;
 pub mod live_ctrl;
 pub mod passthrough;
 pub mod ipc;
+pub mod logbus;
 pub mod wizard;
 
 use std::sync::Arc;
@@ -115,10 +116,18 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Tracing: respect RUST_LOG via the env filter, defaulting to `info`.
+    // Tracing: a layered registry so EVERY event also lands in the log bus
+    // (in-memory ring + rotating .jsonl + live `log:entry`) for the Logs page,
+    // not just stdout (which a windowed release build has no console for).
+    // Default filter captures our own crate at debug; deps stay at info.
+    use tracing_subscriber::prelude::*;
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,live_translator_lib=debug"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .with(crate::logbus::LogBusLayer)
+        .try_init();
 
     // Log panics with a backtrace. Background audio/WS threads use unwinding (no
     // panic=abort), so a thread panic kills only that thread and would otherwise
@@ -165,6 +174,12 @@ pub fn run() {
             let history = HistoryStore::open(app_data_dir.join("history.db"))?;
             let voice_dir = app_data_dir.join("voice");
             std::fs::create_dir_all(&voice_dir)?;
+
+            // Wire the log bus to a rotating file under app-data + the app
+            // handle so events also stream live to the Logs page.
+            let logs_dir = app_data_dir.join("logs");
+            crate::logbus::install_sink(app.handle().clone(), logs_dir);
+            tracing::info!(target: "app", version = env!("CARGO_PKG_VERSION"), "app starting; log bus installed");
 
             // Sweep leaked voice artifacts (rolled-back/crashed pipelines, old
             // schemas) so the voice directory can't accumulate orphans forever.
@@ -230,6 +245,10 @@ pub fn run() {
             ipc::history_list_voice,
             ipc::history_save_call,
             ipc::history_clear,
+            logbus::logs_get,
+            logbus::logs_clear,
+            logbus::logs_export,
+            logbus::logs_dir,
             wizard::wizard_state,
             wizard::wizard_install_cable,
         ])
