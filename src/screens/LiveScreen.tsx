@@ -18,10 +18,6 @@ import {
   SelectPopover,
   SelectTrigger,
   SelectValue,
-  Switch,
-  SwitchContent,
-  SwitchControl,
-  SwitchThumb,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -31,7 +27,13 @@ import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { IconWaveform } from "../components/Icons";
-import { DeviceSelect, buildDeviceOptions } from "./SettingsScreen";
+import {
+  LabeledControl,
+  LangSelect,
+  SwapButton,
+  DeviceSelectPill,
+} from "../components/SetupControls";
+import { buildDeviceOptions } from "./SettingsScreen";
 import { looksLikeHeadphones, looksLikeSpeakers, isLoopbackCaptureDevice } from "../lib/echo";
 import { formatDuration } from "../lib/format";
 
@@ -119,144 +121,153 @@ export function LiveScreen() {
   const outputOptions = buildDeviceOptions(devices?.outputs ?? []);
   const sysDefault = t("settings.audio.systemDefault");
 
-  // The live setup (languages, echo) is sent once per connection and can't be
-  // re-targeted mid-session, so session-scoped controls lock while running —
-  // mirroring the header language pills.
+  // The live setup (languages) is sent once per connection and can't be
+  // re-targeted mid-session, so the language pair locks while running.
   const phase = liveState?.phase ?? "off";
   const sessionLive =
     phase === "running" || phase === "connecting" || phase === "reconnecting";
+
+  const handleSwapLangs = () =>
+    void patchSettings({ myLang: settings.peerLang, peerLang: settings.myLang });
 
   return (
     <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
       {/* Centered content column */}
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-6 pb-0 flex flex-col gap-4">
-        {/* ---- Toolbar: source picker ---- */}
-        <div className="flex items-center gap-3 shrink-0 h-9">
-          <span className="text-caption text-muted shrink-0">
-            {t("live.audioSource")}
-          </span>
-          <SelectRoot
-            selectedKey={
-              captureMode === "system"
-                ? APP_SYSTEM_KEY
-                : appPid != null
-                  ? String(appPid)
-                  : null
-            }
-            placeholder={t("live.pickAppPlaceholder")}
-            onSelectionChange={(key) => {
-              if (key === APP_SYSTEM_KEY) {
-                void useAppStore.getState().patchSettings({ captureMode: "system" });
-                setAppPid(null);
-              } else {
-                const pid = Number(key);
-                void useAppStore.getState().patchSettings({ captureMode: "app" });
-                setAppPid(pid);
-              }
-            }}
-            aria-label={t("live.audioSource")}
-            onOpenChange={(open) => {
-              if (open) void refreshApps();
-            }}
+        {/* ---- Setup strip: languages · source · devices ---- */}
+        <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
+          {/* Language pair — locks while a session runs (sent once per connection). */}
+          <div
+            className="flex items-end gap-2"
+            title={sessionLive ? t("live.langLockedHint") : undefined}
           >
-            <SelectTrigger className="lt-press min-w-[240px] max-w-[420px] inline-flex items-center gap-2.5 h-9 pl-2.5 pr-3.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong">
-              <span
-                aria-hidden="true"
-                className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md bg-cobalt-tint text-cobalt"
-              >
-                <IconWaveform size={15} />
-              </span>
-              <SelectValue className="flex-1 min-w-0 text-left truncate" />
-              <SelectIndicator className="shrink-0" />
-            </SelectTrigger>
-            <SelectPopover>
-              <ListBox className="max-h-72 overflow-y-auto">
-                <ListBoxItem
-                  key={APP_SYSTEM_KEY}
-                  id={APP_SYSTEM_KEY}
-                  textValue={systemAudioLabel}
+            <LabeledControl label={t("live.youSpeak")}>
+              <LangSelect
+                value={settings.myLang}
+                onChange={(c) => void patchSettings({ myLang: c })}
+                ariaLabel={t("live.youSpeak")}
+                tone="out"
+                disabled={sessionLive}
+              />
+            </LabeledControl>
+            <SwapButton
+              onPress={handleSwapLangs}
+              ariaLabel={t("live.swapLangs")}
+              disabled={sessionLive}
+            />
+            <LabeledControl label={t("live.peerSpeaks")}>
+              <LangSelect
+                value={settings.peerLang}
+                onChange={(c) => void patchSettings({ peerLang: c })}
+                ariaLabel={t("live.peerSpeaks")}
+                tone="in"
+                disabled={sessionLive}
+              />
+            </LabeledControl>
+          </div>
+
+          {/* Peer audio source (one app, or the whole system). */}
+          <LabeledControl label={t("live.audioSource")}>
+            <SelectRoot
+              selectedKey={
+                captureMode === "system"
+                  ? APP_SYSTEM_KEY
+                  : appPid != null
+                    ? String(appPid)
+                    : null
+              }
+              placeholder={t("live.pickAppPlaceholder")}
+              onSelectionChange={(key) => {
+                if (key === APP_SYSTEM_KEY) {
+                  void patchSettings({ captureMode: "system" });
+                  setAppPid(null);
+                } else {
+                  const pid = Number(key);
+                  void patchSettings({ captureMode: "app" });
+                  setAppPid(pid);
+                }
+              }}
+              aria-label={t("live.audioSource")}
+              onOpenChange={(open) => {
+                if (open) void refreshApps();
+              }}
+            >
+              <SelectTrigger className="lt-press min-w-[200px] max-w-[280px] inline-flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong">
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md bg-cobalt-tint text-cobalt"
                 >
-                  {systemAudioLabel}
-                </ListBoxItem>
-                {apps.length === 0 ? (
+                  <IconWaveform size={15} />
+                </span>
+                <SelectValue className="flex-1 min-w-0 text-left truncate" />
+                <SelectIndicator className="shrink-0" />
+              </SelectTrigger>
+              <SelectPopover>
+                <ListBox className="max-h-72 overflow-y-auto">
                   <ListBoxItem
-                    key="__no_apps__"
-                    id="__no_apps__"
-                    isDisabled
-                    textValue={t("live.noAppsHint")}
+                    key={APP_SYSTEM_KEY}
+                    id={APP_SYSTEM_KEY}
+                    textValue={systemAudioLabel}
                   >
-                    <span className="text-muted text-caption">
-                      {t("live.noAppsHint")}
-                    </span>
+                    {systemAudioLabel}
                   </ListBoxItem>
-                ) : (
-                  apps.map((app) => (
+                  {apps.length === 0 ? (
                     <ListBoxItem
-                      key={String(app.pid)}
-                      id={String(app.pid)}
-                      textValue={`${app.name} (${app.pid})`}
+                      key="__no_apps__"
+                      id="__no_apps__"
+                      isDisabled
+                      textValue={t("live.noAppsHint")}
                     >
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                            app.active ? "bg-cobalt" : "bg-hairline-strong"
-                          }`}
-                        />
-                        <span>{app.name}</span>
-                        <span className="font-mono text-muted">({app.pid})</span>
+                      <span className="text-muted text-caption">
+                        {t("live.noAppsHint")}
                       </span>
                     </ListBoxItem>
-                  ))
-                )}
-              </ListBox>
-            </SelectPopover>
-          </SelectRoot>
-        </div>
+                  ) : (
+                    apps.map((app) => (
+                      <ListBoxItem
+                        key={String(app.pid)}
+                        id={String(app.pid)}
+                        textValue={`${app.name} (${app.pid})`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                              app.active ? "bg-cobalt" : "bg-hairline-strong"
+                            }`}
+                          />
+                          <span>{app.name}</span>
+                          <span className="font-mono text-muted">({app.pid})</span>
+                        </span>
+                      </ListBoxItem>
+                    ))
+                  )}
+                </ListBox>
+              </SelectPopover>
+            </SelectRoot>
+          </LabeledControl>
 
-        {/* ---- Device pickers: mic + output (live-mode devices) ---- */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
-          <DeviceSelect
-            value={settings.micId}
-            onChange={(v) => void patchSettings({ micId: v })}
-            label={t("settings.audio.mic")}
-            options={micOptions}
-            sysDefault={sysDefault}
-            onOpen={() => void refreshDevices()}
-          />
-          <DeviceSelect
-            value={settings.outputId}
-            onChange={(v) => void patchSettings({ outputId: v })}
-            label={t("settings.audio.output")}
-            options={outputOptions}
-            sysDefault={sysDefault}
-            onOpen={() => void refreshDevices()}
-          />
-        </div>
-
-        {/* ---- Same-language passthrough (IN direction) ---- */}
-        {/* Applies to the incoming peer→you direction and is sent once per
-            connection, so it locks while a session runs (set it before Start). */}
-        <div
-          className="flex flex-col gap-1 shrink-0"
-          title={sessionLive ? t("live.langLockedHint") : undefined}
-        >
-          <Switch
-            isSelected={settings.echoTargetLanguage}
-            onChange={(v) => void patchSettings({ echoTargetLanguage: v })}
-            isDisabled={sessionLive}
-            className="group flex items-center gap-3"
-          >
-            <SwitchControl className="data-[selected]:bg-cobalt">
-              <SwitchThumb />
-            </SwitchControl>
-            <SwitchContent className="text-caption text-ink">
-              {t("settings.translation.echoTargetLanguage")}
-            </SwitchContent>
-          </Switch>
-          <p className="text-label text-muted leading-snug ml-11 max-w-prose">
-            {t("live.echoSessionHint")}
-          </p>
+          {/* Live devices (independent of the voice-message mic). */}
+          <LabeledControl label={t("settings.audio.mic")}>
+            <DeviceSelectPill
+              value={settings.micId}
+              onChange={(v) => void patchSettings({ micId: v })}
+              options={micOptions}
+              sysDefault={sysDefault}
+              onOpen={() => void refreshDevices()}
+              ariaLabel={t("settings.audio.mic")}
+            />
+          </LabeledControl>
+          <LabeledControl label={t("settings.audio.output")}>
+            <DeviceSelectPill
+              value={settings.outputId}
+              onChange={(v) => void patchSettings({ outputId: v })}
+              options={outputOptions}
+              sysDefault={sysDefault}
+              onOpen={() => void refreshDevices()}
+              ariaLabel={t("settings.audio.output")}
+            />
+          </LabeledControl>
         </div>
 
         {/* ---- Banners ---- */}

@@ -130,7 +130,7 @@
       "getKey": "Get key at AI Studio"
     },
     "audio": {
-      "sectionDesc": "Microphone — your voice to be translated. Output device — where you hear the peer's translation (headphones recommended to avoid echo).",
+      "sectionDesc": "VB-CABLE virtual cable and idle mic passthrough. The microphone and output device are chosen on the Live page; the voice-message mic on the Voice page.",
       "mic": "Microphone",
       "output": "Output device",
       "systemDefault": "System default",

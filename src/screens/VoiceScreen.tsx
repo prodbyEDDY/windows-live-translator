@@ -13,11 +13,16 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
 import { Banner } from "../components/Banner";
-import { IconMic, IconStopSquare, IconDownload, IconMicMessage, IconSwap } from "../components/Icons";
-import { DeviceSelect, buildDeviceOptions } from "./SettingsScreen";
+import { IconMic, IconStopSquare, IconDownload, IconMicMessage } from "../components/Icons";
+import {
+  LabeledControl,
+  LangSelect,
+  SwapButton,
+  DeviceSelectPill,
+} from "../components/SetupControls";
+import { buildDeviceOptions } from "./SettingsScreen";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
-import { LANGUAGES, langLabel, langAutonym } from "../lib/languages";
 import { isLoopbackCaptureDevice } from "../lib/echo";
 
 const MAX_RECORD_SECS = 300; // 5 minutes
@@ -229,9 +234,6 @@ export function VoiceScreen() {
           </h1>
 
           <div className="flex items-center gap-3">
-            {/* TTS output voice for RECORDED (outgoing) messages — moved here from
-                Settings so it lives next to the recorder it affects. */}
-            <TtsVoiceSelect />
             {isRecording && (
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-emphasis text-ink tabular-nums">
@@ -266,47 +268,42 @@ export function VoiceScreen() {
           </div>
         </div>
 
-        {/* ---- Voice-message settings: language pair + mic (independent of live) ---- */}
-        <div className="flex items-end gap-2 flex-wrap shrink-0">
-          <div className="flex flex-col gap-1">
-            <span className="text-label text-cobalt-deep font-medium px-1 leading-none">
-              {t("voice.lang.you")}
-            </span>
-            <VoiceLangSelect
-              value={voiceMyLang}
-              onChange={(c) => void patchSettings({ voiceMyLang: c })}
-              ariaLabel={t("voice.lang.you")}
-              tone="out"
-            />
+        {/* ---- Setup strip: language pair · output voice · mic (independent of live) ---- */}
+        <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
+          <div className="flex items-end gap-2">
+            <LabeledControl label={t("voice.lang.you")}>
+              <LangSelect
+                value={voiceMyLang}
+                onChange={(c) => void patchSettings({ voiceMyLang: c })}
+                ariaLabel={t("voice.lang.you")}
+                tone="out"
+              />
+            </LabeledControl>
+            <SwapButton onPress={handleSwapVoiceLangs} ariaLabel={t("voice.lang.swap")} />
+            <LabeledControl label={t("voice.lang.peer")}>
+              <LangSelect
+                value={voicePeerLang}
+                onChange={(c) => void patchSettings({ voicePeerLang: c })}
+                ariaLabel={t("voice.lang.peer")}
+                tone="in"
+              />
+            </LabeledControl>
           </div>
-          <button
-            onClick={handleSwapVoiceLangs}
-            aria-label={t("voice.lang.swap")}
-            className="lt-swap mb-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40"
-          >
-            <IconSwap size={15} />
-          </button>
-          <div className="flex flex-col gap-1">
-            <span className="text-label text-muted font-medium px-1 leading-none">
-              {t("voice.lang.peer")}
-            </span>
-            <VoiceLangSelect
-              value={voicePeerLang}
-              onChange={(c) => void patchSettings({ voicePeerLang: c })}
-              ariaLabel={t("voice.lang.peer")}
-              tone="in"
-            />
-          </div>
-          <div className="ml-auto w-full sm:w-auto sm:min-w-[220px] sm:max-w-[300px]">
-            <DeviceSelect
+
+          <LabeledControl label={t("voice.voiceLabel")}>
+            <TtsVoiceSelect />
+          </LabeledControl>
+
+          <LabeledControl label={t("voice.micLabel")}>
+            <DeviceSelectPill
               value={settings?.voiceMicId ?? null}
               onChange={(v) => void patchSettings({ voiceMicId: v })}
-              label={t("voice.micLabel")}
               options={voiceMicOptions}
               sysDefault={sysDefault}
               onOpen={() => void refreshDevices()}
+              ariaLabel={t("voice.micLabel")}
             />
-          </div>
+          </LabeledControl>
         </div>
 
         {/* Auto-stop / cap notice — truncation is never silent. */}
@@ -354,60 +351,9 @@ export function VoiceScreen() {
 }
 
 /**
- * Compact language picker for the voice-message pair (mono code + native name),
- * mirroring the Header's live-mode LangPill but bound to the voice-specific
- * settings so the two modes can target different languages.
- */
-function VoiceLangSelect({
-  value,
-  onChange,
-  ariaLabel,
-  tone,
-}: {
-  value: string;
-  onChange: (code: string) => void;
-  ariaLabel: string;
-  tone: "out" | "in";
-}) {
-  const ring =
-    tone === "out"
-      ? "border-cobalt/25 hover:border-cobalt/55 focus-within:border-cobalt/55"
-      : "border-hairline hover:border-hairline-strong focus-within:border-hairline-strong";
-  const codeColor = tone === "out" ? "text-cobalt" : "text-muted";
-  return (
-    <SelectRoot
-      selectedKey={value}
-      onSelectionChange={(key) => onChange(String(key))}
-      aria-label={ariaLabel}
-    >
-      <SelectTrigger
-        className={`lt-press inline-flex items-center gap-2 h-9 pl-2.5 pr-3.5 rounded-pill border bg-surface text-caption font-medium text-ink ${ring}`}
-      >
-        <span className={`font-mono text-label font-semibold leading-none ${codeColor}`}>
-          {langLabel(value)}
-        </span>
-        <span className="leading-none">{langAutonym(value)}</span>
-      </SelectTrigger>
-      <SelectPopover>
-        <ListBox items={LANGUAGES} className="max-h-72 overflow-y-auto">
-          {(lang) => (
-            <ListBoxItem key={lang.code} id={lang.code} textValue={lang.autonym}>
-              <span className="font-mono text-label text-muted mr-2">
-                {langLabel(lang.code)}
-              </span>
-              {lang.autonym}
-            </ListBoxItem>
-          )}
-        </ListBox>
-      </SelectPopover>
-    </SelectRoot>
-  );
-}
-
-/**
  * Output-voice picker for recorded (outgoing) voice messages. Bound to the same
- * `settings.ttsVoice` the backend uses, so moving it here from Settings needs no
- * new state or schema — the record/retry commands already read this setting.
+ * `settings.ttsVoice` the backend uses; rendered inside a {@link LabeledControl}
+ * in the setup strip, so it returns just the control (no own label).
  */
 function TtsVoiceSelect() {
   const { t } = useTranslation();
@@ -437,29 +383,24 @@ function TtsVoiceSelect() {
   const items = (voices?.length ? voices : [ttsVoice]).map((v) => ({ id: v }));
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-caption text-muted shrink-0 hidden sm:inline">
-        {t("voice.voiceLabel")}
-      </span>
-      <SelectRoot
-        selectedKey={ttsVoice}
-        onSelectionChange={(key) => void patchSettings({ ttsVoice: String(key) })}
-        aria-label={t("voice.voiceLabel")}
-      >
-        <SelectTrigger className="lt-press inline-flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong min-w-[120px]">
-          <SelectValue className="flex-1 text-left truncate" />
-          <SelectIndicator />
-        </SelectTrigger>
-        <SelectPopover>
-          <ListBox items={items} className="max-h-72 overflow-y-auto">
-            {(item) => (
-              <ListBoxItem key={item.id} id={item.id} textValue={item.id}>
-                {item.id}
-              </ListBoxItem>
-            )}
-          </ListBox>
-        </SelectPopover>
-      </SelectRoot>
-    </div>
+    <SelectRoot
+      selectedKey={ttsVoice}
+      onSelectionChange={(key) => void patchSettings({ ttsVoice: String(key) })}
+      aria-label={t("voice.voiceLabel")}
+    >
+      <SelectTrigger className="lt-press inline-flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-pill border border-hairline bg-surface text-caption text-ink hover:border-hairline-strong min-w-[120px]">
+        <SelectValue className="flex-1 text-left truncate" />
+        <SelectIndicator />
+      </SelectTrigger>
+      <SelectPopover>
+        <ListBox items={items} className="max-h-72 overflow-y-auto">
+          {(item) => (
+            <ListBoxItem key={item.id} id={item.id} textValue={item.id}>
+              {item.id}
+            </ListBoxItem>
+          )}
+        </ListBox>
+      </SelectPopover>
+    </SelectRoot>
   );
 }

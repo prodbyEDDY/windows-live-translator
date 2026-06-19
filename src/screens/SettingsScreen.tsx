@@ -25,7 +25,6 @@ import { ApiKeyField, KeyStatusChip } from "../components/ApiKeyField";
 import { Banner } from "../components/Banner";
 import { IconCheck, IconCross, IconEye, IconEyeOff } from "../components/Icons";
 import { ipc, type DeviceInfo, type KeyStatus } from "../lib/ipc";
-import { isLoopbackCaptureDevice } from "../lib/echo";
 import i18next from "../i18n";
 
 // Helper to build device select options (null = system default)
@@ -294,7 +293,6 @@ export function SettingsScreen() {
   const lastError = useAppStore((s) => s.lastError);
   const patchSettings = useAppStore((s) => s.patchSettings);
   const setLastError = useAppStore((s) => s.setLastError);
-  const refreshDevices = useAppStore((s) => s.refreshDevices);
   const setScreen = useAppStore((s) => s.setScreen);
 
   if (!settings) {
@@ -305,17 +303,10 @@ export function SettingsScreen() {
     );
   }
 
-  const inputDevices = devices?.inputs ?? [];
-  const outputDevices = devices?.outputs ?? [];
+  // Mic + output device pickers live on the Live page (and the voice mic on the
+  // Voice page) — Settings no longer duplicates them. Only the VB-CABLE status
+  // and idle passthrough remain in the Audio section.
   const cablePresent = devices?.cablePresent ?? false;
-  // Hide render-loopback / monitor endpoints ("CABLE Output", "Stereo Mix", …):
-  // picking one as the mic makes the OUT session capture the call audio and
-  // translate the peer straight back to themselves.
-  const micOptions = buildDeviceOptions(
-    inputDevices.filter((d) => !isLoopbackCaptureDevice(d.name))
-  );
-  const outputOptions = buildDeviceOptions(outputDevices);
-  const sysDefault = t("settings.audio.systemDefault");
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -377,29 +368,12 @@ export function SettingsScreen() {
           </button>
         </SettingsCard>
 
-        {/* ---- Audio ---- */}
+        {/* ---- Audio (VB-CABLE + passthrough; device pickers live on the pages) ---- */}
         <SettingsCard
           title={t("settings.sections.audio")}
           description={t("settings.audio.sectionDesc")}
         >
-          <DeviceSelect
-            value={settings.micId}
-            onChange={(v) => void patchSettings({ micId: v })}
-            label={t("settings.audio.mic")}
-            options={micOptions}
-            sysDefault={sysDefault}
-            onOpen={() => void refreshDevices()}
-          />
-          <DeviceSelect
-            value={settings.outputId}
-            onChange={(v) => void patchSettings({ outputId: v })}
-            label={t("settings.audio.output")}
-            options={outputOptions}
-            sysDefault={sysDefault}
-            onOpen={() => void refreshDevices()}
-          />
-
-          <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <span
                 className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${

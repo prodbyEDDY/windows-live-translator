@@ -2,79 +2,18 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Button,
-  ListBox,
-  ListBoxItem,
-  SelectRoot,
-  SelectPopover,
-  SelectTrigger,
   Spinner,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@heroui/react";
 import { useAppStore } from "../stores/app";
-import { LANGUAGES, langLabel, langAutonym } from "../lib/languages";
 import { canStart } from "../lib/liveStart";
-import { WaveformGlyph, IconSwap, IconStopSquare } from "./Icons";
-
-/** Compact language Select pill: mono code prefix (RU / EN) + native autonym. */
-function LangPill({
-  value,
-  onChange,
-  ariaLabel,
-  tone,
-  disabled,
-}: {
-  value: string;
-  onChange: (code: string) => void;
-  ariaLabel: string;
-  tone: "out" | "in";
-  disabled?: boolean;
-}) {
-  // Direction is read from alignment + the language code, not a second hue.
-  // The OUT role gets a faint cobalt code; the IN role stays neutral.
-  const ring =
-    tone === "out"
-      ? "border-cobalt/25 hover:border-cobalt/55 focus-within:border-cobalt/55"
-      : "border-hairline hover:border-hairline-strong focus-within:border-hairline-strong";
-  const codeColor = tone === "out" ? "text-cobalt" : "text-muted";
-  return (
-    <SelectRoot
-      selectedKey={value}
-      onSelectionChange={(key) => onChange(String(key))}
-      aria-label={ariaLabel}
-      isDisabled={disabled}
-    >
-      <SelectTrigger
-        className={`lt-press group inline-flex items-center gap-2 h-9 pl-2.5 pr-3.5 rounded-pill border bg-surface text-caption font-medium text-ink ${ring}`}
-      >
-        <span
-          className={`font-mono text-label font-semibold leading-none ${codeColor}`}
-        >
-          {langLabel(value)}
-        </span>
-        <span className="leading-none">{langAutonym(value)}</span>
-      </SelectTrigger>
-      <SelectPopover>
-        <ListBox items={LANGUAGES} className="max-h-72 overflow-y-auto">
-          {(lang) => (
-            <ListBoxItem key={lang.code} id={lang.code} textValue={lang.autonym}>
-              <span className="font-mono text-label text-muted mr-2">
-                {langLabel(lang.code)}
-              </span>
-              {lang.autonym}
-            </ListBoxItem>
-          )}
-        </ListBox>
-      </SelectPopover>
-    </SelectRoot>
-  );
-}
+import { WaveformGlyph, IconStopSquare } from "./Icons";
 
 export function Header() {
   const { t } = useTranslation();
   const settings = useAppStore((s) => s.settings);
-  const patchSettings = useAppStore((s) => s.patchSettings);
   const keyStatus = useAppStore((s) => s.keyStatus);
   const devices = useAppStore((s) => s.devices);
   const liveState = useAppStore((s) => s.liveState);
@@ -103,11 +42,6 @@ export function Header() {
     return () => clearInterval(id);
   }, [phase, setDurationSec]);
 
-  function handleSwap() {
-    if (!settings) return;
-    void patchSettings({ myLang: settings.peerLang, peerLang: settings.myLang });
-  }
-
   return (
     <header className="relative z-20 flex items-center h-14 pr-5 gap-4 bg-surface border-b border-hairline shrink-0">
       {/* Wordmark — fixed-width block aligned to the sidebar edge (224px). The
@@ -119,54 +53,12 @@ export function Header() {
         </span>
       </div>
 
-      {/* Center: compact language pair */}
-      {settings && (
-        // The running session keeps the languages it was started with — the
-        // setup is sent once per connection and cannot be re-targeted live.
-        // Disable the controls so the UI never promises a change it can't make.
-        <div
-          className="flex-1 flex items-end justify-center gap-3"
-          title={isRunning ? t("live.langLockedHint") : undefined}
-        >
-          {/* "You speak" — your language (outgoing direction). */}
-          <div className="flex flex-col items-start gap-1">
-            <span className="text-label text-cobalt-deep font-medium px-1 leading-none">
-              {t("live.youSpeak")}
-            </span>
-            <LangPill
-              value={settings.myLang}
-              onChange={(c) => void patchSettings({ myLang: c })}
-              ariaLabel={t("live.youSpeak")}
-              tone="out"
-              disabled={isRunning}
-            />
-          </div>
-          <button
-            onClick={handleSwap}
-            disabled={isRunning}
-            aria-label={t("live.swapLangs")}
-            className="lt-swap mb-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40 disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <IconSwap size={15} />
-          </button>
-          {/* "Peer speaks" — their language (incoming direction). */}
-          <div className="flex flex-col items-start gap-1">
-            <span className="text-label text-muted font-medium px-1 leading-none">
-              {t("live.peerSpeaks")}
-            </span>
-            <LangPill
-              value={settings.peerLang}
-              onChange={(c) => void patchSettings({ peerLang: c })}
-              ariaLabel={t("live.peerSpeaks")}
-              disabled={isRunning}
-              tone="in"
-            />
-          </div>
-        </div>
-      )}
+      {/* The language pair + per-mode setup now live in each page's body; the
+          header is pure global chrome (brand · session status · start/stop). */}
+      <div className="flex-1" />
 
-      {/* Right: status + start/stop (start/stop only on live screen) */}
-      <div className="flex items-center gap-3 shrink-0 w-56 justify-end">
+      {/* Right: status + start/stop (start/stop only on the Live screen) */}
+      <div className="flex items-center gap-3 shrink-0 justify-end">
         {/* Compact "session running — open Live" pill: the only global stop/return
             affordance when the user has navigated away from the Live screen. */}
         {isRunning && screen !== "live" && (
