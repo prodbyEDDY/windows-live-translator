@@ -236,18 +236,60 @@ async fn upload_audio_file(
     Ok(uri)
 }
 
+/// English name for a BCP-47 language code (covers the app's `LANGUAGES` set).
+/// Falls back to the code itself for anything unknown. Using the full English
+/// name in the prompt is far more reliable than a bare code — a bare "es" let
+/// the model drift to English; "Spanish (es)" + an explicit constraint does not.
+pub fn language_name(code: &str) -> &'static str {
+    match code {
+        "af" => "Afrikaans", "ar" => "Arabic", "az" => "Azerbaijani",
+        "bn" => "Bengali", "bg" => "Bulgarian", "cs" => "Czech",
+        "da" => "Danish", "de" => "German", "el" => "Greek",
+        "en" => "English", "es" => "Spanish", "et" => "Estonian",
+        "fa" => "Persian", "fi" => "Finnish", "fil" => "Filipino",
+        "fr" => "French", "he" => "Hebrew", "hi" => "Hindi",
+        "hr" => "Croatian", "hu" => "Hungarian", "hy" => "Armenian",
+        "id" => "Indonesian", "it" => "Italian", "ja" => "Japanese",
+        "ka" => "Georgian", "kk" => "Kazakh", "ko" => "Korean",
+        "lt" => "Lithuanian", "lv" => "Latvian", "mr" => "Marathi",
+        "ms" => "Malay", "nl" => "Dutch", "no" => "Norwegian",
+        "pl" => "Polish", "pt" => "Portuguese", "ro" => "Romanian",
+        "ru" => "Russian", "sk" => "Slovak", "sl" => "Slovenian",
+        "sr" => "Serbian", "sv" => "Swedish", "sw" => "Swahili",
+        "ta" => "Tamil", "te" => "Telugu", "th" => "Thai",
+        "tr" => "Turkish", "uk" => "Ukrainian", "ur" => "Urdu",
+        "uz" => "Uzbek", "vi" => "Vietnamese", "zh" => "Chinese",
+        other => leak_unknown(other),
+    }
+}
+
+/// Unknown codes are returned verbatim. We can't return a `&'static str` from a
+/// borrowed `&str`, so fall back to the literal "the target language" — the
+/// `(code)` in the prompt still pins the exact language for the model.
+fn leak_unknown(_code: &str) -> &'static str {
+    "the target language"
+}
+
 fn build_prompt(target_lang: &str) -> String {
+    let name = language_name(target_lang);
     format!(
-        "Transcribe this audio, then translate the transcript into {target_lang} (BCP-47). \
+        "Transcribe this audio, then translate the transcript into {name} ({target_lang}). \
+The \"translation\" field MUST be written ONLY in {name} ({target_lang}); \
+never reply in English unless {name} is English. \
 Reply with ONLY a JSON object: {{\"sourceLang\": \"<BCP-47>\", \"transcript\": \"...\", \"translation\": \"...\"}}"
     )
 }
 
+/// Transcription models tried in order: the primary, then a fallback when the
+/// primary hard-errors or keeps returning unparseable JSON.
+pub const TRANSCRIBE_MODELS: &[&str] = &["gemini-3.5-flash", "gemini-2.5-flash"];
+
 async fn call_generate_content(
     api_key: &str,
     body: &serde_json::Value,
+    model: &str,
 ) -> anyhow::Result<String> {
-    let url = format!("{BASE}/models/gemini-3.5-flash:generateContent");
+    let url = format!("{BASE}/models/{model}:generateContent");
     let resp = slow_client()
         .post(&url)
         .header("x-goog-api-key", api_key)
@@ -258,7 +300,7 @@ async fn call_generate_content(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
-        tracing::warn!(target: "gemini", http_status = status, body = %body_text, model = "gemini-3.5-flash", "generateContent failed");
+        tracing::warn!(target: "gemini", http_status = status, body = %body_text, model, "generateContent failed");
         anyhow::bail!("generateContent failed: HTTP {status}: {body_text}");
     }
 
@@ -323,23 +365,63 @@ pub async fn transcribe_translate(
         }
     };
 
-    let body = serde_json::json!({ "contents": build_contents(&prompt) });
+    // Stricter same-model retry prompt (used when the first attempt's JSON is
+    // unparseable). The >20 MB file_uri is reused — no second upload.
+    let retry_prompt = format!("{prompt}\nReply with ONLY the JSON object, no other text.");
 
-    // First attempt.
-    let text = call_generate_content(api_key, &body).await?;
-    if let Some(result) = parse_voice_json(&text) {
-        return Ok(result);
+    // Try each model in order. A model that hard-errors (HTTP/network) OR keeps
+    // returning unparseable JSON after the stricter retry is abandoned for the
+    // next model. The first model to yield valid JSON wins.
+    let mut last_err: Option<anyhow::Error> = None;
+    for (i, model) in TRANSCRIBE_MODELS.iter().enumerate() {
+        tracing::info!(target: "gemini", model = *model, attempt = (i + 1) as u64, "transcribe attempt");
+
+        let first = call_generate_content(
+            api_key,
+            &serde_json::json!({ "contents": build_contents(&prompt) }),
+            model,
+        )
+        .await;
+
+        match first {
+            Ok(text) => {
+                if let Some(result) = parse_voice_json(&text) {
+                    if i > 0 {
+                        tracing::info!(target: "gemini", model = *model, "transcribe recovered on fallback model");
+                    }
+                    return Ok(result);
+                }
+                // Same-model stricter retry.
+                match call_generate_content(
+                    api_key,
+                    &serde_json::json!({ "contents": build_contents(&retry_prompt) }),
+                    model,
+                )
+                .await
+                {
+                    Ok(retry_text) => {
+                        if let Some(result) = parse_voice_json(&retry_text) {
+                            return Ok(result);
+                        }
+                        tracing::warn!(target: "gemini", model = *model, "unparseable JSON after stricter retry; trying next model");
+                        last_err = Some(anyhow::anyhow!(
+                            "model {model} returned unparseable JSON: {retry_text}"
+                        ));
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "gemini", model = *model, error = %e, "stricter retry call failed; trying next model");
+                        last_err = Some(e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(target: "gemini", model = *model, error = %e, "model call failed; trying next model");
+                last_err = Some(e);
+            }
+        }
     }
 
-    // Retry with a stricter instruction appended (reusing the same `file_uri`
-    // for the >20 MB path — no second upload).
-    let retry_prompt = format!(
-        "{prompt}\nReply with ONLY the JSON object, no other text."
-    );
-    let retry_body = serde_json::json!({ "contents": build_contents(&retry_prompt) });
-    let retry_text = call_generate_content(api_key, &retry_body).await?;
-    parse_voice_json(&retry_text)
-        .ok_or_else(|| anyhow::anyhow!("model returned unparseable JSON after retry: {retry_text}"))
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("all transcription models failed")))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -531,6 +613,39 @@ mod tests {
         assert!(parse_voice_json("").is_none());
         assert!(parse_voice_json("{}").is_none()); // missing required fields
         assert!(parse_voice_json(r#"{"wrong":"fields"}"#).is_none());
+    }
+
+    // ── prompt + model selection ─────────────────────────────────────────────
+
+    #[test]
+    fn language_name_known_and_fallback() {
+        assert_eq!(language_name("es"), "Spanish");
+        assert_eq!(language_name("it"), "Italian");
+        assert_eq!(language_name("ru"), "Russian");
+        assert_eq!(language_name("zh"), "Chinese");
+        // Unknown code → generic phrase (the (code) in the prompt still pins it).
+        assert_eq!(language_name("xx"), "the target language");
+    }
+
+    #[test]
+    fn build_prompt_names_language_and_constrains_output() {
+        let p = build_prompt("es");
+        // Full English name present, not just the bare code.
+        assert!(p.contains("Spanish"), "prompt must name the language: {p}");
+        assert!(p.contains("(es)"), "prompt must include the BCP-47 code: {p}");
+        // The hard constraint that prevents English drift.
+        assert!(p.contains("MUST be written ONLY in Spanish"), "prompt: {p}");
+        assert!(p.contains("never reply in English"), "prompt: {p}");
+    }
+
+    #[test]
+    fn transcribe_models_has_primary_then_fallback() {
+        assert_eq!(TRANSCRIBE_MODELS[0], "gemini-3.5-flash");
+        assert!(
+            TRANSCRIBE_MODELS.contains(&"gemini-2.5-flash"),
+            "fallback model must be present"
+        );
+        assert!(TRANSCRIBE_MODELS.len() >= 2);
     }
 
     #[test]
