@@ -15,8 +15,8 @@ use crate::audio::devices::{
 };
 use crate::audio::dsp::{self, StreamResampler};
 use crate::elevenlabs::rest::{
-    probe_synth, probe_validate, synthesize_elevenlabs, validate_elevenlabs, ElevenProbe,
-    ELEVEN_MODEL_ID,
+    eleven_supports_lang, probe_synth, probe_validate, synthesize_elevenlabs, validate_elevenlabs,
+    ElevenProbe, ELEVEN_MODEL_ID,
 };
 use crate::gemini::rest::{
     probe_tts, probe_validate_key, synthesize_speech, transcribe_translate, validate_key,
@@ -656,6 +656,13 @@ async fn run_record_pipeline(
         SynthPlan::Fail(short) => {
             tracing::warn!(target: "voice", id, route = "fail", short = %short, "synth pre-flight failed")
         }
+    }
+    // Pre-flight: ElevenLabs' multilingual_v2 can't speak every language we offer.
+    // Fail fast with a clear error rather than synthesize garbled / English audio.
+    if matches!(plan, SynthPlan::Eleven { .. }) && !eleven_supports_lang(&peer_lang) {
+        tracing::warn!(target: "voice", id, lang = %peer_lang, "ElevenLabs voice does not support this target language");
+        set_stage(&app, &history, id, &stage_error("el_lang_unsupported"));
+        return;
     }
     let is_eleven = matches!(plan, SynthPlan::Eleven { .. });
     let pcm_result = match plan {

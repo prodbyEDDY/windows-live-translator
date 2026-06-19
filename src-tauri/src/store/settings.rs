@@ -19,8 +19,17 @@ pub enum TtsProvider { Gemini, Elevenlabs }
 pub struct Settings {
     pub my_lang: String,
     pub peer_lang: String,
+    /// Voice-message language pair, INDEPENDENT of the live pair above. Lets the
+    /// user run live calls in one pair and translate voice messages in another.
+    /// Migrated from `my_lang`/`peer_lang` once (schema v2) so existing users keep
+    /// continuity; serde `default` backfills from [`Settings::default`].
+    pub voice_my_lang: String,
+    pub voice_peer_lang: String,
     pub mic_id: Option<String>,
     pub output_id: Option<String>,
+    /// Microphone for recording voice messages, INDEPENDENT of the live `mic_id`.
+    /// `None` = system default. serde `default` backfills to `None`.
+    pub voice_mic_id: Option<String>,
     pub capture_mode: CaptureMode,
     pub echo_target_language: bool,
     pub ducking_enabled: bool,
@@ -95,13 +104,15 @@ fn default_schema_version() -> u32 {
 
 /// Current settings schema version. Bump (and extend the migration in
 /// [`SettingsStore::open`]) whenever a default needs to flip for existing users.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             my_lang: "ru".into(), peer_lang: "en".into(),
+            voice_my_lang: "ru".into(), voice_peer_lang: "en".into(),
             mic_id: None, output_id: None,
+            voice_mic_id: None,
             capture_mode: CaptureMode::App,
             echo_target_language: true,
             ducking_enabled: true, duck_level: 0.2,
@@ -165,7 +176,18 @@ impl SettingsStore {
         // sticks), then persist so this never re-runs. Best-effort: a failed
         // write just means we migrate again next launch, which is harmless.
         if settings.settings_schema_version < CURRENT_SCHEMA_VERSION {
-            settings.echo_target_language = true;
+            // v0 → v1: flip the same-language passthrough on once.
+            if settings.settings_schema_version < 1 {
+                settings.echo_target_language = true;
+            }
+            // v1 → v2: voice messages gained their own language pair. Seed it from
+            // the existing live pair so the user keeps continuity (they can change
+            // it afterwards; the choice persists at v2). A brand-new install starts
+            // at CURRENT_SCHEMA_VERSION and skips this entirely.
+            if settings.settings_schema_version < 2 {
+                settings.voice_my_lang = settings.my_lang.clone();
+                settings.voice_peer_lang = settings.peer_lang.clone();
+            }
             settings.settings_schema_version = CURRENT_SCHEMA_VERSION;
             if let Err(e) = write_settings_to_disk(&path, &settings) {
                 tracing::warn!(error = %e, "settings migration write failed; will retry next launch");
@@ -252,6 +274,49 @@ mod tests {
         let s = Settings::default();
         assert_eq!(s.tts_provider, TtsProvider::Gemini);
         assert_eq!(s.eleven_voice_id, "");
+    }
+
+    #[test]
+    fn defaults_include_voice_lang_pair_and_mic() {
+        let s = Settings::default();
+        assert_eq!(s.voice_my_lang, "ru");
+        assert_eq!(s.voice_peer_lang, "en");
+        assert_eq!(s.voice_mic_id, None);
+    }
+
+    /// A v1 file (predating the voice language pair) is migrated to v2 by copying
+    /// the live pair into the voice pair, so the user keeps continuity.
+    #[test]
+    fn migration_v1_seeds_voice_langs_from_live() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"myLang":"en","peerLang":"de","settingsSchemaVersion":1}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::open(path).unwrap();
+        let s = store.get();
+        assert_eq!(s.voice_my_lang, "en", "voice myLang seeded from live");
+        assert_eq!(s.voice_peer_lang, "de", "voice peerLang seeded from live");
+        assert_eq!(s.settings_schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn roundtrip_persists_voice_lang_and_mic() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path().join("s.json")).unwrap();
+        store
+            .patch(serde_json::json!({
+                "voiceMyLang": "es",
+                "voicePeerLang": "it",
+                "voiceMicId": "mic-42"
+            }))
+            .unwrap();
+        let again = SettingsStore::open(dir.path().join("s.json")).unwrap();
+        assert_eq!(again.get().voice_my_lang, "es");
+        assert_eq!(again.get().voice_peer_lang, "it");
+        assert_eq!(again.get().voice_mic_id.as_deref(), Some("mic-42"));
     }
 
     /// An older settings.json predating the ElevenLabs keys must still load,

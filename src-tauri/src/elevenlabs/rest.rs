@@ -34,6 +34,22 @@ pub const ELEVEN_MODEL_ID: &str = "eleven_multilingual_v2";
 /// tiers a cloned voice already requires (only 44.1 kHz PCM/WAV needs Pro+).
 const OUTPUT_FORMAT: &str = "pcm_24000";
 
+/// BCP-47 codes the `eleven_multilingual_v2` model can speak (29 languages).
+/// Used to pre-flight a recording's target language before calling convert, so
+/// an unsupported language fails fast with a clear error instead of producing
+/// garbled or English audio.
+pub const ELEVEN_SUPPORTED_LANGS: &[&str] = &[
+    "en", "ja", "zh", "de", "hi", "fr", "ko", "pt", "it", "es", "id", "nl", "tr",
+    "fil", "pl", "sv", "bg", "ro", "ar", "cs", "el", "fi", "hr", "ms", "sk", "da",
+    "ta", "uk", "ru",
+];
+
+/// True if `eleven_multilingual_v2` can synthesize the given BCP-47 language.
+pub fn eleven_supports_lang(code: &str) -> bool {
+    let lower = code.to_ascii_lowercase();
+    ELEVEN_SUPPORTED_LANGS.contains(&lower.as_str())
+}
+
 static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 fn client() -> &'static reqwest::Client {
@@ -337,6 +353,18 @@ mod tests {
         assert!(matches!(classify_elevenlabs(422, "x"), KeyStatus::Invalid { .. }));
         assert!(matches!(classify_elevenlabs(429, "x"), KeyStatus::Error { .. }));
         assert!(matches!(classify_elevenlabs(500, "x"), KeyStatus::Error { .. }));
+    }
+
+    #[test]
+    fn eleven_supports_lang_covers_es_it_not_uz() {
+        assert!(eleven_supports_lang("es"));
+        assert!(eleven_supports_lang("it"));
+        assert!(eleven_supports_lang("ru"));
+        assert!(eleven_supports_lang("EN")); // case-insensitive
+        // Not in the multilingual_v2 set.
+        assert!(!eleven_supports_lang("uz"));
+        assert!(!eleven_supports_lang("hy"));
+        assert!(!eleven_supports_lang("th"));
     }
 
     #[test]
