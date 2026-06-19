@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { LogEntry } from "./logs";
 
 export type KeyStatus =
   | { state: "missing" | "valid" }
@@ -131,6 +132,31 @@ export interface VoiceProgressEvent {
   stage: string;
 }
 
+export type { LogEntry } from "./logs";
+
+/** A connection-probe result (camelCase mirror of the Rust probe types). */
+export interface ProbeResult {
+  ok: boolean;
+  httpStatus: number | null;
+  code: string | null;
+  detail: string;
+}
+
+/** Verdict of the ElevenLabs connection self-test. */
+export interface ElevenSelfTest {
+  keyPresent: boolean;
+  voiceId: string;
+  validate: ProbeResult;
+  synth: ProbeResult;
+}
+
+/** Verdict of the Gemini connection self-test. */
+export interface GeminiSelfTest {
+  keyPresent: boolean;
+  validate: ProbeResult;
+  tts: ProbeResult;
+}
+
 export const ipc = {
   settingsGet: () => invoke<Settings>("settings_get"),
   settingsSet: (patch: Partial<Settings>) =>
@@ -186,6 +212,19 @@ export const ipc = {
   wizardState: () =>
     invoke<{ keyPresent: boolean; cablePresent: boolean }>("wizard_state"),
   wizardInstallCable: () => invoke<void>("wizard_install_cable"),
+  /** Snapshot of the backend log ring (newest last). */
+  logsGet: () => invoke<LogEntry[]>("logs_get"),
+  /** Clear the in-memory log ring (the on-disk .jsonl keeps its history). */
+  logsClear: () => invoke<void>("logs_clear"),
+  /** Write the current ring to `dest` as "txt" or "json". */
+  logsExport: (dest: string, format: "txt" | "json") =>
+    invoke<void>("logs_export", { dest, format }),
+  /** The logs directory path (for "open folder"). */
+  logsDir: () => invoke<string | null>("logs_dir"),
+  /** Run a real ElevenLabs validate + tiny synth probe; returns the verdict. */
+  elevenlabsSelfTest: () => invoke<ElevenSelfTest>("elevenlabs_self_test"),
+  /** Run a real Gemini key-validate + tiny TTS probe; returns the verdict. */
+  geminiSelfTest: () => invoke<GeminiSelfTest>("gemini_self_test"),
   onTranscript: (
     cb: (e: TranscriptEvent) => void
   ): Promise<UnlistenFn> =>
@@ -204,6 +243,9 @@ export const ipc = {
     cb: (e: VoiceProgressEvent) => void
   ): Promise<UnlistenFn> =>
     listen("voice:progress", (e) => cb(e.payload as VoiceProgressEvent)),
+  /** Live stream of captured backend log entries. */
+  onLogEntry: (cb: (e: LogEntry) => void): Promise<UnlistenFn> =>
+    listen("log:entry", (e) => cb(e.payload as LogEntry)),
   onCost: (cb: (e: CostEvent) => void): Promise<UnlistenFn> =>
     listen("live:cost", (e) => cb(e.payload as CostEvent)),
   /** Fired when the backend auto-closes an idle session to save credits. */
