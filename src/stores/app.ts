@@ -68,6 +68,17 @@ function nextId() {
 }
 
 /**
+ * Keep voice messages newest-first by a STABLE key (`id`, monotonic autoincrement)
+ * rather than relying on insertion order. The list arrives from several sources —
+ * the initial `voiceList`, optimistic `upsertVoice`, and `voice:progress` updates —
+ * and mixing prepend with an already-sorted backend list previously left the order
+ * inconsistent ("сбивается"). Sorting by id desc makes newest-on-top an invariant.
+ */
+function sortVoiceDesc(list: VoiceRecord[]): VoiceRecord[] {
+  return [...list].sort((a, b) => b.id - a.id);
+}
+
+/**
  * The store only holds the last {@link MAX_UI_LINES} transcript lines so a long
  * session can't grow the rendered tree unbounded. The FULL transcript lives in
  * this module-scoped, mutable array OUTSIDE the store (no re-renders) and is
@@ -298,9 +309,11 @@ export const useAppStore = create<AppState>((set, _get) => ({
           const rec = await ipc.voiceGet(ev.id);
           if (rec) {
             set((state) => ({
-              voiceMessages: state.voiceMessages.some((m) => m.id === rec.id)
-                ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
-                : [rec, ...state.voiceMessages],
+              voiceMessages: sortVoiceDesc(
+                state.voiceMessages.some((m) => m.id === rec.id)
+                  ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
+                  : [rec, ...state.voiceMessages]
+              ),
             }));
           }
         } catch {
@@ -457,8 +470,9 @@ export const useAppStore = create<AppState>((set, _get) => ({
   loadVoice: async () => {
     try {
       const voiceMessages = await ipc.voiceList();
-      // newest first
-      set({ voiceMessages: [...voiceMessages].reverse() });
+      // Newest first by id (the backend already returns id DESC; sorting here
+      // makes the invariant explicit and immune to source ordering).
+      set({ voiceMessages: sortVoiceDesc(voiceMessages) });
     } catch (e) {
       set({ lastError: String(e) });
     }
@@ -466,9 +480,11 @@ export const useAppStore = create<AppState>((set, _get) => ({
 
   upsertVoice: (rec: VoiceRecord) => {
     set((state) => ({
-      voiceMessages: state.voiceMessages.some((m) => m.id === rec.id)
-        ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
-        : [rec, ...state.voiceMessages],
+      voiceMessages: sortVoiceDesc(
+        state.voiceMessages.some((m) => m.id === rec.id)
+          ? state.voiceMessages.map((m) => (m.id === rec.id ? rec : m))
+          : [rec, ...state.voiceMessages]
+      ),
     }));
   },
 }));

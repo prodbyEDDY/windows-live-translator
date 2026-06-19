@@ -29,8 +29,13 @@ export interface AppSession {
 export interface Settings {
   myLang: string;
   peerLang: string;
+  /** Voice-message language pair, independent of the live pair above. */
+  voiceMyLang: string;
+  voicePeerLang: string;
   micId: string | null;
   outputId: string | null;
+  /** Microphone for recording voice messages, independent of the live `micId`. */
+  voiceMicId: string | null;
   captureMode: "app" | "system";
   echoTargetLanguage: boolean;
   duckingEnabled: boolean;

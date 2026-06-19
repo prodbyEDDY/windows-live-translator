@@ -76,10 +76,10 @@ export function VoiceScreen() {
 
           for (const path of ok) {
             // A dropped file is an INCOMING message FROM the peer, so it must be
-            // translated INTO the user's OWN language (myLang) — not the peer's.
-            // (Recording, below, correctly targets peerLang for the outgoing clip.)
+            // translated INTO the user's OWN voice language (voiceMyLang) — not the
+            // peer's. (Recording, below, targets voicePeerLang for the outgoing clip.)
             const targetLang =
-              useAppStore.getState().settings?.myLang ?? "ru";
+              useAppStore.getState().settings?.voiceMyLang ?? "ru";
             try {
               const id = await ipc.voiceImport(path, targetLang);
               const rec = await ipc.voiceGet(id);
@@ -148,7 +148,7 @@ export function VoiceScreen() {
   }
 
   async function handleStartRecording() {
-    const micId = useAppStore.getState().settings?.micId ?? null;
+    const micId = useAppStore.getState().settings?.voiceMicId ?? null;
     setRecordingNotice(null);
     try {
       await ipc.voiceRecordStart(micId);
@@ -168,10 +168,11 @@ export function VoiceScreen() {
     // blocked by a stale closure value.
     if (!isRecordingRef.current) return;
     stopRecordingState();
-    // Read languages/voice via the store (no stale closure) at stop time.
+    // Read languages/voice via the store (no stale closure) at stop time. Voice
+    // messages use their OWN language pair, independent of the live pair.
     const cur = useAppStore.getState().settings;
-    const myLang = cur?.myLang ?? "ru";
-    const peerLang = cur?.peerLang ?? "en";
+    const myLang = cur?.voiceMyLang ?? "ru";
+    const peerLang = cur?.voicePeerLang ?? "en";
     const ttsVoice = cur?.ttsVoice ?? "Kore";
     try {
       const id = await ipc.voiceRecordStop(myLang, peerLang, ttsVoice);

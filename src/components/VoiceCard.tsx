@@ -168,16 +168,16 @@ export function VoiceCard({ record }: VoiceCardProps) {
   }
 
   async function handleRetry() {
-    // Re-run with the CURRENT language for this card's direction, so changing the
-    // language pair then hitting retry re-translates into the new language:
-    // incoming (dropped) → my language; outgoing (recorded) → the peer's language.
-    // (The TTS voice for outgoing cards is taken fresh from settings by the
+    // Re-run with the CURRENT voice language for this card's direction, so changing
+    // the voice language pair then hitting retry re-translates into the new language:
+    // incoming (dropped) → my voice language; outgoing (recorded) → the peer's voice
+    // language. (The TTS voice for outgoing cards is taken fresh from settings by the
     // backend on retry.)
     const settings = useAppStore.getState().settings;
     const targetLang =
       record.kind === "in"
-        ? settings?.myLang ?? "ru"
-        : settings?.peerLang ?? "en";
+        ? settings?.voiceMyLang ?? "ru"
+        : settings?.voicePeerLang ?? "en";
     try {
       await ipc.voiceRetry(record.id, targetLang);
     } catch {
