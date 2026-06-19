@@ -27,7 +27,8 @@ import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { IconWaveform } from "../components/Icons";
-import { looksLikeHeadphones, looksLikeSpeakers } from "../lib/echo";
+import { DeviceSelect, buildDeviceOptions } from "./SettingsScreen";
+import { looksLikeHeadphones, looksLikeSpeakers, isLoopbackCaptureDevice } from "../lib/echo";
 import { formatDuration } from "../lib/format";
 
 export function LiveScreen() {
@@ -44,6 +45,8 @@ export function LiveScreen() {
   const appPid = useAppStore((s) => s.appPid);
   const setAppPid = useAppStore((s) => s.setAppPid);
   const refreshApps = useAppStore((s) => s.refreshApps);
+  const refreshDevices = useAppStore((s) => s.refreshDevices);
+  const patchSettings = useAppStore((s) => s.patchSettings);
   const clearTranscript = useAppStore((s) => s.clearTranscript);
   const setScreen = useAppStore((s) => s.setScreen);
   const setLastError = useAppStore((s) => s.setLastError);
@@ -102,6 +105,15 @@ export function LiveScreen() {
       </div>
     );
   }
+
+  // Live-mode device options (mic hides loopback/monitor endpoints, same as
+  // Settings). These pickers persist `micId`/`outputId` — the LIVE devices,
+  // independent of the voice-message mic.
+  const micOptions = buildDeviceOptions(
+    (devices?.inputs ?? []).filter((d) => !isLoopbackCaptureDevice(d.name))
+  );
+  const outputOptions = buildDeviceOptions(devices?.outputs ?? []);
+  const sysDefault = t("settings.audio.systemDefault");
 
   return (
     <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
@@ -189,6 +201,26 @@ export function LiveScreen() {
               </ListBox>
             </SelectPopover>
           </SelectRoot>
+        </div>
+
+        {/* ---- Device pickers: mic + output (live-mode devices) ---- */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
+          <DeviceSelect
+            value={settings.micId}
+            onChange={(v) => void patchSettings({ micId: v })}
+            label={t("settings.audio.mic")}
+            options={micOptions}
+            sysDefault={sysDefault}
+            onOpen={() => void refreshDevices()}
+          />
+          <DeviceSelect
+            value={settings.outputId}
+            onChange={(v) => void patchSettings({ outputId: v })}
+            label={t("settings.audio.output")}
+            options={outputOptions}
+            sysDefault={sysDefault}
+            onOpen={() => void refreshDevices()}
+          />
         </div>
 
         {/* ---- Banners ---- */}

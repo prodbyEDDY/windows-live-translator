@@ -226,6 +226,12 @@
     "title": "Voice Messages",
     "voiceLabel": "Voice",
     "voiceCloneLabel": "🎙 Your voice",
+    "lang": {
+      "you": "You speak",
+      "peer": "Translate into",
+      "swap": "Swap languages"
+    },
+    "micLabel": "Microphone",
     "recordButton": "Record",
     "stopButton": "Stop",
     "recordCap": "max 5:00",
@@ -249,7 +255,8 @@
       "encode_failed": "Audio encoding failed",
       "el_no_key": "No ElevenLabs API key — add it in Settings",
       "el_no_voice": "No ElevenLabs voice id — add it in Settings",
-      "el_synth_failed": "ElevenLabs synthesis failed — check key, voice and quota"
+      "el_synth_failed": "ElevenLabs synthesis failed — check key, voice and quota",
+      "el_lang_unsupported": "The ElevenLabs voice can't speak this language — switch to a Gemini voice or pick a supported language"
     },
     "originalLabel": "Original",
     "translationLabel": "Translation",

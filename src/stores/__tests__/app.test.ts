@@ -34,8 +34,11 @@ import type { Settings } from "../../lib/ipc";
 const BASE_SETTINGS: Settings = {
   myLang: "ru",
   peerLang: "en",
+  voiceMyLang: "ru",
+  voicePeerLang: "en",
   micId: "mic-1",
   outputId: null,
+  voiceMicId: null,
   captureMode: "system",
   echoTargetLanguage: false,
   duckingEnabled: false,

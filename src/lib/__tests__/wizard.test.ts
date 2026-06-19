@@ -39,8 +39,11 @@ describe("buildTestConfig", () => {
   const base: Settings = {
     myLang: "ru",
     peerLang: "en",
+    voiceMyLang: "ru",
+    voicePeerLang: "en",
     micId: "mic-1",
     outputId: "out-1",
+    voiceMicId: null,
     captureMode: "app",
     echoTargetLanguage: true,
     duckingEnabled: true,

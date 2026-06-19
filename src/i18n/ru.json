@@ -226,6 +226,12 @@
     "title": "Голосовые сообщения",
     "voiceLabel": "Голос",
     "voiceCloneLabel": "🎙 Ваш голос",
+    "lang": {
+      "you": "Вы говорите",
+      "peer": "Перевод на",
+      "swap": "Поменять языки"
+    },
+    "micLabel": "Микрофон",
     "recordButton": "Записать",
     "stopButton": "Стоп",
     "recordCap": "макс. 5:00",
@@ -249,7 +255,8 @@
       "encode_failed": "Не удалось закодировать аудио",
       "el_no_key": "Нет ключа ElevenLabs — добавьте в настройках",
       "el_no_voice": "Нет voice id ElevenLabs — добавьте в настройках",
-      "el_synth_failed": "Сбой синтеза ElevenLabs — проверьте ключ, голос и квоту"
+      "el_synth_failed": "Сбой синтеза ElevenLabs — проверьте ключ, голос и квоту",
+      "el_lang_unsupported": "Голос ElevenLabs не говорит на этом языке — выберите голос Gemini или поддерживаемый язык"
     },
     "originalLabel": "Оригинал",
     "translationLabel": "Перевод",

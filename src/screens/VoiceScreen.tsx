@@ -13,9 +13,12 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
 import { Banner } from "../components/Banner";
-import { IconMic, IconStopSquare, IconDownload, IconMicMessage } from "../components/Icons";
+import { IconMic, IconStopSquare, IconDownload, IconMicMessage, IconSwap } from "../components/Icons";
+import { DeviceSelect, buildDeviceOptions } from "./SettingsScreen";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
+import { LANGUAGES, langLabel, langAutonym } from "../lib/languages";
+import { isLoopbackCaptureDevice } from "../lib/echo";
 
 const MAX_RECORD_SECS = 300; // 5 minutes
 
@@ -26,6 +29,10 @@ export function VoiceScreen() {
   const loadVoice = useAppStore((s) => s.loadVoice);
   const upsertVoice = useAppStore((s) => s.upsertVoice);
   const setLastError = useAppStore((s) => s.setLastError);
+  const settings = useAppStore((s) => s.settings);
+  const patchSettings = useAppStore((s) => s.patchSettings);
+  const devices = useAppStore((s) => s.devices);
+  const refreshDevices = useAppStore((s) => s.refreshDevices);
 
   // Drop-zone state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -188,6 +195,18 @@ export function VoiceScreen() {
     }
   }
 
+  // Voice-message device + language controls (independent of the live mode).
+  const voiceMicOptions = buildDeviceOptions(
+    (devices?.inputs ?? []).filter((d) => !isLoopbackCaptureDevice(d.name))
+  );
+  const sysDefault = t("settings.audio.systemDefault");
+  const voiceMyLang = settings?.voiceMyLang ?? "ru";
+  const voicePeerLang = settings?.voicePeerLang ?? "en";
+
+  function handleSwapVoiceLangs() {
+    void patchSettings({ voiceMyLang: voicePeerLang, voicePeerLang: voiceMyLang });
+  }
+
   return (
     <div className="flex-1 min-h-0 flex flex-col relative">
       {/* ---- Drop overlay ---- */}
@@ -247,6 +266,49 @@ export function VoiceScreen() {
           </div>
         </div>
 
+        {/* ---- Voice-message settings: language pair + mic (independent of live) ---- */}
+        <div className="flex items-end gap-2 flex-wrap shrink-0">
+          <div className="flex flex-col gap-1">
+            <span className="text-label text-cobalt-deep font-medium px-1 leading-none">
+              {t("voice.lang.you")}
+            </span>
+            <VoiceLangSelect
+              value={voiceMyLang}
+              onChange={(c) => void patchSettings({ voiceMyLang: c })}
+              ariaLabel={t("voice.lang.you")}
+              tone="out"
+            />
+          </div>
+          <button
+            onClick={handleSwapVoiceLangs}
+            aria-label={t("voice.lang.swap")}
+            className="lt-swap mb-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full border border-hairline bg-surface text-muted hover:text-cobalt hover:border-cobalt/40"
+          >
+            <IconSwap size={15} />
+          </button>
+          <div className="flex flex-col gap-1">
+            <span className="text-label text-muted font-medium px-1 leading-none">
+              {t("voice.lang.peer")}
+            </span>
+            <VoiceLangSelect
+              value={voicePeerLang}
+              onChange={(c) => void patchSettings({ voicePeerLang: c })}
+              ariaLabel={t("voice.lang.peer")}
+              tone="in"
+            />
+          </div>
+          <div className="ml-auto w-full sm:w-auto sm:min-w-[220px] sm:max-w-[300px]">
+            <DeviceSelect
+              value={settings?.voiceMicId ?? null}
+              onChange={(v) => void patchSettings({ voiceMicId: v })}
+              label={t("voice.micLabel")}
+              options={voiceMicOptions}
+              sysDefault={sysDefault}
+              onOpen={() => void refreshDevices()}
+            />
+          </div>
+        </div>
+
         {/* Auto-stop / cap notice — truncation is never silent. */}
         {recordingNotice && (
           <div className="shrink-0">
@@ -288,6 +350,57 @@ export function VoiceScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Compact language picker for the voice-message pair (mono code + native name),
+ * mirroring the Header's live-mode LangPill but bound to the voice-specific
+ * settings so the two modes can target different languages.
+ */
+function VoiceLangSelect({
+  value,
+  onChange,
+  ariaLabel,
+  tone,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  ariaLabel: string;
+  tone: "out" | "in";
+}) {
+  const ring =
+    tone === "out"
+      ? "border-cobalt/25 hover:border-cobalt/55 focus-within:border-cobalt/55"
+      : "border-hairline hover:border-hairline-strong focus-within:border-hairline-strong";
+  const codeColor = tone === "out" ? "text-cobalt" : "text-muted";
+  return (
+    <SelectRoot
+      selectedKey={value}
+      onSelectionChange={(key) => onChange(String(key))}
+      aria-label={ariaLabel}
+    >
+      <SelectTrigger
+        className={`lt-press inline-flex items-center gap-2 h-9 pl-2.5 pr-3.5 rounded-pill border bg-surface text-caption font-medium text-ink ${ring}`}
+      >
+        <span className={`font-mono text-label font-semibold leading-none ${codeColor}`}>
+          {langLabel(value)}
+        </span>
+        <span className="leading-none">{langAutonym(value)}</span>
+      </SelectTrigger>
+      <SelectPopover>
+        <ListBox items={LANGUAGES} className="max-h-72 overflow-y-auto">
+          {(lang) => (
+            <ListBoxItem key={lang.code} id={lang.code} textValue={lang.autonym}>
+              <span className="font-mono text-label text-muted mr-2">
+                {langLabel(lang.code)}
+              </span>
+              {lang.autonym}
+            </ListBoxItem>
+          )}
+        </ListBox>
+      </SelectPopover>
+    </SelectRoot>
   );
 }
 
