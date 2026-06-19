@@ -1,7 +1,9 @@
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use base64::Engine as _;
+
+use crate::logbus::mask_secret;
 
 pub const BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -112,8 +114,9 @@ pub async fn synthesize_speech(
         .await?;
 
     if !resp.status().is_success() {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
+        tracing::warn!(target: "gemini", http_status = status, body = %body_text, model = "gemini-3.1-flash-tts-preview", "TTS generateContent failed");
         anyhow::bail!("TTS generateContent failed: HTTP {status}: {body_text}");
     }
 
@@ -253,8 +256,9 @@ async fn call_generate_content(
         .await?;
 
     if !resp.status().is_success() {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body_text = resp.text().await.unwrap_or_default();
+        tracing::warn!(target: "gemini", http_status = status, body = %body_text, model = "gemini-3.5-flash", "generateContent failed");
         anyhow::bail!("generateContent failed: HTTP {status}: {body_text}");
     }
 
@@ -365,6 +369,59 @@ pub async fn validate_key(key: &str) -> KeyStatus {
             classify_validation(status, &body)
         }
         Err(e) => KeyStatus::Error { message: format!("network: {}", e.without_url()) },
+    }
+}
+
+// ── self-test probes ──────────────────────────────────────────────────────────
+
+/// A Gemini connection-probe result for the self-test.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiProbe {
+    pub ok: bool,
+    pub http_status: Option<u16>,
+    pub code: Option<String>,
+    pub detail: String,
+}
+
+/// Probe the Gemini key via the models list endpoint, logging the outcome.
+pub async fn probe_validate_key(key: &str) -> GeminiProbe {
+    tracing::info!(target: "gemini", key = %mask_secret(key), "self-test: validate key →");
+    match validate_key(key).await {
+        KeyStatus::Valid => {
+            tracing::info!(target: "gemini", "self-test: key OK");
+            GeminiProbe { ok: true, http_status: Some(200), code: None, detail: "key valid".into() }
+        }
+        KeyStatus::Invalid { reason } => {
+            tracing::error!(target: "gemini", reason = %reason, "self-test: key INVALID");
+            GeminiProbe { ok: false, http_status: None, code: Some("invalid_key".into()), detail: reason }
+        }
+        KeyStatus::Error { message } => {
+            tracing::error!(target: "gemini", message = %message, "self-test: key check error");
+            GeminiProbe { ok: false, http_status: None, code: Some("error".into()), detail: message }
+        }
+        KeyStatus::Missing => {
+            GeminiProbe { ok: false, http_status: None, code: Some("missing".into()), detail: "no key stored".into() }
+        }
+    }
+}
+
+/// Probe Gemini TTS with a tiny phrase (mirrors what transcription needs:
+/// reachability of generativelanguage.googleapis.com), logging the outcome.
+pub async fn probe_tts(key: &str, voice: &str) -> GeminiProbe {
+    let started = Instant::now();
+    tracing::info!(target: "gemini", voice, "self-test: TTS probe →");
+    match synthesize_speech(key, "Test.", voice).await {
+        Ok(pcm) => {
+            let ms = started.elapsed().as_millis() as u64;
+            tracing::info!(target: "gemini", samples = pcm.len(), latency_ms = ms, "self-test: TTS OK");
+            GeminiProbe { ok: true, http_status: Some(200), code: None, detail: format!("{} samples in {ms} ms", pcm.len()) }
+        }
+        Err(e) => {
+            let detail = e.to_string();
+            tracing::error!(target: "gemini", error = %detail, "self-test: TTS FAILED");
+            GeminiProbe { ok: false, http_status: None, code: Some("tts_failed".into()), detail }
+        }
     }
 }
 
@@ -549,5 +606,18 @@ mod tests {
     async fn validates_real_key() {
         let key = std::env::var("GEMINI_API_KEY").unwrap();
         assert!(matches!(validate_key(&key).await, KeyStatus::Valid));
+    }
+
+    #[test]
+    fn gemini_probe_serializes_camel_case() {
+        let p = GeminiProbe {
+            ok: false,
+            http_status: Some(403),
+            code: Some("auth".into()),
+            detail: "bad key".into(),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"httpStatus\":403"));
+        assert!(json.contains("\"ok\":false"));
     }
 }

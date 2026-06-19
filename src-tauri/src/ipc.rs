@@ -14,8 +14,15 @@ use crate::audio::devices::{
     cable_render_device_id, list_audio_apps, list_devices, AppSession, DevicesPayload,
 };
 use crate::audio::dsp::{self, StreamResampler};
-use crate::elevenlabs::rest::{synthesize_elevenlabs, validate_elevenlabs, ELEVEN_MODEL_ID};
-use crate::gemini::rest::{synthesize_speech, transcribe_translate, validate_key, KeyStatus, TTS_VOICES};
+use crate::elevenlabs::rest::{
+    probe_synth, probe_validate, synthesize_elevenlabs, validate_elevenlabs, ElevenProbe,
+    ELEVEN_MODEL_ID,
+};
+use crate::gemini::rest::{
+    probe_tts, probe_validate_key, synthesize_speech, transcribe_translate, validate_key,
+    GeminiProbe, KeyStatus, TTS_VOICES,
+};
+use crate::logbus::mask_secret;
 use crate::live_ctrl::{LiveConfig, LiveController};
 use crate::passthrough::Passthrough;
 use crate::store::history::{CallRecord, HistoryStore, VoiceRecord, VoiceUpdate};
@@ -228,6 +235,119 @@ pub fn audio_apps_list() -> Result<Vec<AppSession>, String> {
     list_audio_apps().map_err(|e| e.to_string())
 }
 
+// ── connection self-tests ─────────────────────────────────────────────────────
+//
+// These make REAL probe calls (no audio recorded) and log the exact HTTP
+// status/body so the Logs page shows the precise cause of a customer's failure
+// (e.g. ElevenLabs `detected_unusual_activity`, `voice_not_found`, a Gemini
+// region block on transcription). The returned verdict drives the inline card.
+
+/// Result of the ElevenLabs connection self-test.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevenSelfTest {
+    pub key_present: bool,
+    pub voice_id: String,
+    pub validate: ElevenProbe,
+    pub synth: ElevenProbe,
+}
+
+/// Run a real ElevenLabs validate (get-voice) + tiny synth probe and report the
+/// verdict. Synthesis is only attempted if validation passed.
+#[tauri::command]
+pub async fn elevenlabs_self_test(state: State<'_, AppState>) -> Result<ElevenSelfTest, String> {
+    let voice_id = state.settings.get().eleven_voice_id;
+    let key = match get_elevenlabs_api_key() {
+        Some(k) => k,
+        None => {
+            tracing::warn!(target: "elevenlabs", "self-test: no API key stored");
+            let miss = ElevenProbe {
+                ok: false,
+                http_status: None,
+                code: Some("no_key".into()),
+                detail: "no ElevenLabs key stored".into(),
+            };
+            return Ok(ElevenSelfTest {
+                key_present: false,
+                voice_id: mask_secret(&voice_id),
+                validate: miss.clone(),
+                synth: miss,
+            });
+        }
+    };
+    tracing::info!(target: "elevenlabs", voice_id = %mask_secret(&voice_id), "self-test: started");
+    let validate = probe_validate(&key, &voice_id).await;
+    let synth = if validate.ok {
+        probe_synth(&key, &voice_id, ELEVEN_MODEL_ID).await
+    } else {
+        ElevenProbe {
+            ok: false,
+            http_status: None,
+            code: Some("skipped".into()),
+            detail: "skipped (validate failed)".into(),
+        }
+    };
+    tracing::info!(target: "elevenlabs", validate_ok = validate.ok, synth_ok = synth.ok, "self-test: finished");
+    Ok(ElevenSelfTest {
+        key_present: true,
+        voice_id: mask_secret(&voice_id),
+        validate,
+        synth,
+    })
+}
+
+/// Result of the Gemini connection self-test.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiSelfTest {
+    pub key_present: bool,
+    pub validate: GeminiProbe,
+    pub tts: GeminiProbe,
+}
+
+/// Run a real Gemini key-validate + tiny TTS probe (transcription uses the same
+/// host) and report the verdict.
+#[tauri::command]
+pub async fn gemini_self_test(state: State<'_, AppState>) -> Result<GeminiSelfTest, String> {
+    let key = match get_api_key() {
+        Some(k) => k,
+        None => {
+            tracing::warn!(target: "gemini", "self-test: no API key stored");
+            let miss = GeminiProbe {
+                ok: false,
+                http_status: None,
+                code: Some("no_key".into()),
+                detail: "no Gemini key stored".into(),
+            };
+            return Ok(GeminiSelfTest {
+                key_present: false,
+                validate: miss.clone(),
+                tts: miss,
+            });
+        }
+    };
+    tracing::info!(target: "gemini", "self-test: started");
+    let validate = probe_validate_key(&key).await;
+    let voice = state.settings.get().tts_voice;
+    let voice = if voice.is_empty() { "Kore".to_string() } else { voice };
+    let tts = if validate.ok {
+        probe_tts(&key, &voice).await
+    } else {
+        GeminiProbe {
+            ok: false,
+            http_status: None,
+            code: Some("skipped".into()),
+            detail: "skipped (validate failed)".into(),
+        }
+    };
+    tracing::info!(target: "gemini", validate_ok = validate.ok, tts_ok = tts.ok, "self-test: finished");
+    Ok(GeminiSelfTest {
+        key_present: true,
+        validate,
+        tts,
+    })
+}
+
 /// Start a live session (OUT pipeline in this task).
 ///
 /// Async so the blocking WASAPI device-open / WS-spawn work (~100–600 ms)
@@ -341,6 +461,7 @@ pub async fn live_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(),
 /// The single chokepoint for stage transitions so the DB and the UI never drift
 /// — every stage change in the pipeline goes through here.
 fn set_stage(app: &AppHandle, history: &HistoryStore, id: i64, stage: &str) {
+    tracing::info!(target: "voice", id, stage = %stage, "stage →");
     let _ = history.update_voice(
         id,
         VoiceUpdate {
@@ -367,20 +488,23 @@ async fn run_import_pipeline(
     mime: String,
     target_lang: String,
 ) {
+    tracing::info!(target: "voice", id, kind = "in", target_lang = %target_lang, mime = %mime, "import pipeline started");
     set_stage(&app, &history, id, STAGE_TRANSCRIBING);
 
     let bytes = match std::fs::read(&source_path) {
         Ok(b) => b,
         Err(e) => {
-            tracing::warn!("voice_import {id}: read source failed: {e}");
+            tracing::warn!(target: "voice", id, error = %e, "voice_import: read source failed");
             set_stage(&app, &history, id, &stage_error("read_failed"));
             return;
         }
     };
+    tracing::info!(target: "voice", id, source_bytes = bytes.len(), "read source file");
 
     let api_key = match get_api_key() {
         Some(k) => k,
         None => {
+            tracing::warn!(target: "voice", id, "voice_import: no Gemini API key");
             set_stage(&app, &history, id, &stage_error("no_api_key"));
             return;
         }
@@ -402,6 +526,7 @@ async fn run_import_pipeline(
                     return;
                 }
             }
+            tracing::info!(target: "voice", id, source_lang = %t.source_lang, transcript_len = t.transcript.chars().count(), translation_len = t.translation.chars().count(), "import transcribe+translate OK");
             let _ = history.update_voice(
                 id,
                 VoiceUpdate {
@@ -414,7 +539,7 @@ async fn run_import_pipeline(
             set_stage(&app, &history, id, STAGE_DONE);
         }
         Err(e) => {
-            tracing::warn!("voice_import {id}: transcribe_translate failed: {e}");
+            tracing::warn!(target: "voice", id, error = %e, "voice_import: transcribe_translate failed");
             set_stage(&app, &history, id, &stage_error("transcribe_failed"));
         }
     }
@@ -474,20 +599,24 @@ async fn run_record_pipeline(
     peer_lang: String,
     synth: OutSynth,
 ) {
+    let job_started = std::time::Instant::now();
+    tracing::info!(target: "voice", id, kind = "out", peer_lang = %peer_lang, provider = ?synth.provider, eleven_voice = %mask_secret(&synth.eleven_voice_id), "record pipeline started");
     set_stage(&app, &history, id, STAGE_TRANSCRIBING);
 
     let bytes = match std::fs::read(&source_path) {
         Ok(b) => b,
         Err(e) => {
-            tracing::warn!("voice_record {id}: read source failed: {e}");
+            tracing::warn!(target: "voice", id, error = %e, "voice_record: read source failed");
             set_stage(&app, &history, id, &stage_error("read_failed"));
             return;
         }
     };
+    tracing::info!(target: "voice", id, source_bytes = bytes.len(), "read recorded WAV source");
 
     let api_key = match get_api_key() {
         Some(k) => k,
         None => {
+            tracing::warn!(target: "voice", id, "voice_record: no Gemini API key");
             set_stage(&app, &history, id, &stage_error("no_api_key"));
             return;
         }
@@ -497,11 +626,12 @@ async fn run_record_pipeline(
     let transcription = match transcribe_translate(&api_key, &bytes, "audio/wav", &peer_lang).await {
         Ok(t) => t,
         Err(e) => {
-            tracing::warn!("voice_record {id}: transcribe_translate failed: {e}");
+            tracing::warn!(target: "voice", id, error = %e, "voice_record: transcribe_translate failed");
             set_stage(&app, &history, id, &stage_error("transcribe_failed"));
             return;
         }
     };
+    tracing::info!(target: "voice", id, source_lang = %transcription.source_lang, transcript_len = transcription.transcript.chars().count(), translation_len = transcription.translation.chars().count(), elapsed_ms = job_started.elapsed().as_millis() as u64, "transcribe+translate OK");
     let _ = history.update_voice(
         id,
         VoiceUpdate {
@@ -516,6 +646,17 @@ async fn run_record_pipeline(
     set_stage(&app, &history, id, STAGE_SYNTHESIZING);
     let eleven_key = get_elevenlabs_api_key();
     let plan = plan_out_synth(&synth, eleven_key.is_some());
+    match &plan {
+        SynthPlan::Gemini { voice } => {
+            tracing::info!(target: "voice", id, route = "gemini", voice = %voice, "synth route resolved")
+        }
+        SynthPlan::Eleven { voice_id, model } => {
+            tracing::info!(target: "voice", id, route = "elevenlabs", voice_id = %mask_secret(voice_id), model = %model, "synth route resolved")
+        }
+        SynthPlan::Fail(short) => {
+            tracing::warn!(target: "voice", id, route = "fail", short = %short, "synth pre-flight failed")
+        }
+    }
     let is_eleven = matches!(plan, SynthPlan::Eleven { .. });
     let pcm_result = match plan {
         SynthPlan::Gemini { voice } => {
@@ -540,11 +681,12 @@ async fn run_record_pipeline(
         Ok(p) => p,
         Err(e) => {
             let short = if is_eleven { "el_synth_failed" } else { "synthesize_failed" };
-            tracing::warn!("voice_record {id}: synthesize failed ({short}): {e}");
+            tracing::warn!(target: "voice", id, short = %short, error = %e, "voice_record: synthesize failed");
             set_stage(&app, &history, id, &stage_error(short));
             return;
         }
     };
+    tracing::info!(target: "voice", id, samples = pcm.len(), "synthesis OK");
 
     // History may have been cleared (clear_all) while this pipeline was in
     // flight: the row — and any files we'd write — are gone. Re-check right

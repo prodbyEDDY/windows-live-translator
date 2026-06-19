@@ -249,6 +249,8 @@ pub fn run() {
             logbus::logs_clear,
             logbus::logs_export,
             logbus::logs_dir,
+            ipc::elevenlabs_self_test,
+            ipc::gemini_self_test,
             wizard::wizard_state,
             wizard::wizard_install_cable,
         ])
