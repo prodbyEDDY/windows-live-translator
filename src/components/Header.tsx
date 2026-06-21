@@ -10,10 +10,12 @@ import {
 import { useAppStore } from "../stores/app";
 import { canStart } from "../lib/liveStart";
 import { WaveformGlyph, IconStopSquare } from "./Icons";
+import { LabeledControl, LangSelect, SwapButton } from "./SetupControls";
 
 export function Header() {
   const { t } = useTranslation();
   const settings = useAppStore((s) => s.settings);
+  const patchSettings = useAppStore((s) => s.patchSettings);
   const keyStatus = useAppStore((s) => s.keyStatus);
   const devices = useAppStore((s) => s.devices);
   const liveState = useAppStore((s) => s.liveState);
@@ -32,6 +34,15 @@ export function Header() {
   const cablePresent = devices?.cablePresent ?? false;
   const startResult = canStart(keyStatus, captureMode, appPid, cablePresent);
 
+  // The header's center carries the language pair for the ACTIVE mode — Live and
+  // Voice each control their own independent pair. Other screens leave it empty.
+  const isLive = screen === "live";
+  const isVoice = screen === "voice";
+  const showLangs = settings != null && (isLive || isVoice);
+  // The live pair locks once a session is connecting/running (setup is sent once
+  // per connection); the voice pair is never session-bound.
+  const langsLocked = isLive && isRunning;
+
   // Drive the shared session timer from the live phase.
   useEffect(() => {
     if (phase !== "running") {
@@ -41,6 +52,22 @@ export function Header() {
     const id = setInterval(() => setDurationSec((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [phase, setDurationSec]);
+
+  // Per-mode language bindings (kept fully independent between Live and Voice).
+  const youLang = settings ? (isLive ? settings.myLang : settings.voiceMyLang) : "";
+  const peerLang = settings ? (isLive ? settings.peerLang : settings.voicePeerLang) : "";
+  const youLabel = isLive ? t("live.youSpeak") : t("voice.lang.you");
+  const peerLabel = isLive ? t("live.peerSpeaks") : t("voice.lang.peer");
+  const onYou = (c: string) =>
+    void patchSettings(isLive ? { myLang: c } : { voiceMyLang: c });
+  const onPeer = (c: string) =>
+    void patchSettings(isLive ? { peerLang: c } : { voicePeerLang: c });
+  const onSwap = () =>
+    void patchSettings(
+      isLive
+        ? { myLang: peerLang, peerLang: youLang }
+        : { voiceMyLang: peerLang, voicePeerLang: youLang }
+    );
 
   return (
     <header className="relative z-20 flex items-center h-14 pr-5 gap-4 bg-surface border-b border-hairline shrink-0">
@@ -53,9 +80,36 @@ export function Header() {
         </span>
       </div>
 
-      {/* The language pair + per-mode setup now live in each page's body; the
-          header is pure global chrome (brand · session status · start/stop). */}
-      <div className="flex-1" />
+      {/* Center: language pair for the active mode (Live ⟷ its own pair, Voice ⟷
+          its own). Empty on the other screens. */}
+      {showLangs ? (
+        <div
+          className="flex-1 flex items-end justify-center gap-2.5"
+          title={langsLocked ? t("live.langLockedHint") : undefined}
+        >
+          <LabeledControl label={youLabel}>
+            <LangSelect
+              value={youLang}
+              onChange={onYou}
+              ariaLabel={youLabel}
+              tone="out"
+              disabled={langsLocked}
+            />
+          </LabeledControl>
+          <SwapButton onPress={onSwap} ariaLabel={t("live.swapLangs")} disabled={langsLocked} />
+          <LabeledControl label={peerLabel}>
+            <LangSelect
+              value={peerLang}
+              onChange={onPeer}
+              ariaLabel={peerLabel}
+              tone="in"
+              disabled={langsLocked}
+            />
+          </LabeledControl>
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {/* Right: status + start/stop (start/stop only on the Live screen) */}
       <div className="flex items-center gap-3 shrink-0 justify-end">

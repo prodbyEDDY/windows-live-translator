@@ -14,12 +14,7 @@ import { useAppStore } from "../stores/app";
 import { VoiceCard } from "../components/VoiceCard";
 import { Banner } from "../components/Banner";
 import { IconMic, IconStopSquare, IconDownload, IconMicMessage } from "../components/Icons";
-import {
-  LabeledControl,
-  LangSelect,
-  SwapButton,
-  DeviceSelectPill,
-} from "../components/SetupControls";
+import { LabeledControl, DeviceSelectPill } from "../components/SetupControls";
 import { buildDeviceOptions } from "./SettingsScreen";
 import { ipc } from "../lib/ipc";
 import { filterAudioPaths, formatRecordingTime } from "../lib/voice";
@@ -200,17 +195,12 @@ export function VoiceScreen() {
     }
   }
 
-  // Voice-message device + language controls (independent of the live mode).
+  // Voice-message mic options (independent of the live mic). The language pair
+  // lives in the top header (bound to voiceMyLang/voicePeerLang).
   const voiceMicOptions = buildDeviceOptions(
     (devices?.inputs ?? []).filter((d) => !isLoopbackCaptureDevice(d.name))
   );
   const sysDefault = t("settings.audio.systemDefault");
-  const voiceMyLang = settings?.voiceMyLang ?? "ru";
-  const voicePeerLang = settings?.voicePeerLang ?? "en";
-
-  function handleSwapVoiceLangs() {
-    void patchSettings({ voiceMyLang: voicePeerLang, voicePeerLang: voiceMyLang });
-  }
 
   return (
     <div className="flex-1 min-h-0 flex flex-col relative">
@@ -227,36 +217,15 @@ export function VoiceScreen() {
       )}
 
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-7 flex flex-col gap-6 lt-screen-in">
-        {/* ---- Page header: title + language pair (voice's own, independent of live) ---- */}
-        <div className="flex items-end justify-between gap-x-4 gap-y-3 shrink-0 flex-wrap">
-          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0 self-center">
+        {/* ---- Header row (the language pair lives in the top header) ---- */}
+        <div className="flex items-center justify-between gap-4 shrink-0 min-h-14">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
             {t("voice.title")}
           </h1>
 
-          <div className="flex items-end gap-3 flex-wrap">
-            {/* Voice-message language pair (own setting, not the live pair). */}
-            <div className="flex items-end gap-2">
-              <LabeledControl label={t("voice.lang.you")}>
-                <LangSelect
-                  value={voiceMyLang}
-                  onChange={(c) => void patchSettings({ voiceMyLang: c })}
-                  ariaLabel={t("voice.lang.you")}
-                  tone="out"
-                />
-              </LabeledControl>
-              <SwapButton onPress={handleSwapVoiceLangs} ariaLabel={t("voice.lang.swap")} />
-              <LabeledControl label={t("voice.lang.peer")}>
-                <LangSelect
-                  value={voicePeerLang}
-                  onChange={(c) => void patchSettings({ voicePeerLang: c })}
-                  ariaLabel={t("voice.lang.peer")}
-                  tone="in"
-                />
-              </LabeledControl>
-            </div>
-
+          <div className="flex items-center gap-3">
             {isRecording && (
-              <div className="flex items-baseline gap-2 h-9 self-center">
+              <div className="flex items-baseline gap-2">
                 <span className="font-mono text-emphasis text-ink tabular-nums">
                   {formatRecordingTime(recordingSecs)}
                 </span>
@@ -277,13 +246,13 @@ export function VoiceScreen() {
                 aria-label={
                   isRecording ? t("voice.stopButton") : t("voice.recordButton")
                 }
-                className={`lt-press relative flex items-center justify-center w-12 h-12 rounded-full text-white lt-card ${
+                className={`lt-press relative flex items-center justify-center w-14 h-14 rounded-full text-white lt-card ${
                   isRecording
                     ? "bg-tangerine hover:bg-tangerine-deep"
                     : "bg-cobalt hover:bg-cobalt-deep lt-glow"
                 }`}
               >
-                {isRecording ? <IconStopSquare size={20} /> : <IconMic size={20} />}
+                {isRecording ? <IconStopSquare size={22} /> : <IconMic size={22} />}
               </button>
             </div>
           </div>

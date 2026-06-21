@@ -27,12 +27,7 @@ import { DirectionMeter } from "../components/LevelMeter";
 import { TranscriptFeed } from "../components/TranscriptFeed";
 import { Banner } from "../components/Banner";
 import { IconWaveform } from "../components/Icons";
-import {
-  LabeledControl,
-  LangSelect,
-  SwapButton,
-  DeviceSelectPill,
-} from "../components/SetupControls";
+import { LabeledControl, DeviceSelectPill } from "../components/SetupControls";
 import { buildDeviceOptions } from "./SettingsScreen";
 import { looksLikeHeadphones, looksLikeSpeakers, isLoopbackCaptureDevice } from "../lib/echo";
 import { formatDuration } from "../lib/format";
@@ -121,54 +116,14 @@ export function LiveScreen() {
   const outputOptions = buildDeviceOptions(devices?.outputs ?? []);
   const sysDefault = t("settings.audio.systemDefault");
 
-  // The live setup (languages) is sent once per connection and can't be
-  // re-targeted mid-session, so the language pair locks while running.
-  const phase = liveState?.phase ?? "off";
-  const sessionLive =
-    phase === "running" || phase === "connecting" || phase === "reconnecting";
-
-  const handleSwapLangs = () =>
-    void patchSettings({ myLang: settings.peerLang, peerLang: settings.myLang });
-
   return (
     <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
       {/* Centered content column */}
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-6 pb-0 flex flex-col gap-4">
-        {/* ---- Page header: title + language pair (Live's own, independent of voice) ---- */}
-        <div className="flex items-end justify-between gap-4 flex-wrap shrink-0">
-          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
-            {t("screen.live")}
-          </h1>
-          {/* Language pair — locks while a session runs (sent once per connection). */}
-          <div
-            className="flex items-end gap-2"
-            title={sessionLive ? t("live.langLockedHint") : undefined}
-          >
-            <LabeledControl label={t("live.youSpeak")}>
-              <LangSelect
-                value={settings.myLang}
-                onChange={(c) => void patchSettings({ myLang: c })}
-                ariaLabel={t("live.youSpeak")}
-                tone="out"
-                disabled={sessionLive}
-              />
-            </LabeledControl>
-            <SwapButton
-              onPress={handleSwapLangs}
-              ariaLabel={t("live.swapLangs")}
-              disabled={sessionLive}
-            />
-            <LabeledControl label={t("live.peerSpeaks")}>
-              <LangSelect
-                value={settings.peerLang}
-                onChange={(c) => void patchSettings({ peerLang: c })}
-                ariaLabel={t("live.peerSpeaks")}
-                tone="in"
-                disabled={sessionLive}
-              />
-            </LabeledControl>
-          </div>
-        </div>
+        {/* ---- Page title (the language pair lives in the top header) ---- */}
+        <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
+          {t("screen.live")}
+        </h1>
 
         {/* ---- Setup strip: source · devices ---- */}
         <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
