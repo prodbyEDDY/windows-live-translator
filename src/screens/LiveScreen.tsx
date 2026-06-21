@@ -134,8 +134,11 @@ export function LiveScreen() {
     <div className="flex-1 min-h-0 flex flex-col lt-screen-in">
       {/* Centered content column */}
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 pt-6 pb-0 flex flex-col gap-4">
-        {/* ---- Setup strip: languages · source · devices ---- */}
-        <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
+        {/* ---- Page header: title + language pair (Live's own, independent of voice) ---- */}
+        <div className="flex items-end justify-between gap-4 flex-wrap shrink-0">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0">
+            {t("screen.live")}
+          </h1>
           {/* Language pair — locks while a session runs (sent once per connection). */}
           <div
             className="flex items-end gap-2"
@@ -165,7 +168,10 @@ export function LiveScreen() {
               />
             </LabeledControl>
           </div>
+        </div>
 
+        {/* ---- Setup strip: source · devices ---- */}
+        <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
           {/* Peer audio source (one app, or the whole system). */}
           <LabeledControl label={t("live.audioSource")}>
             <SelectRoot

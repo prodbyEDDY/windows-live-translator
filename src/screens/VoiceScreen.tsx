@@ -227,15 +227,36 @@ export function VoiceScreen() {
       )}
 
       <div className="flex-1 min-h-0 w-full max-w-[920px] mx-auto px-6 py-7 flex flex-col gap-6 lt-screen-in">
-        {/* ---- Header row ---- */}
-        <div className="flex items-center justify-between gap-4 shrink-0 min-h-14">
-          <h1 className="font-display text-h1 font-semibold tracking-tight text-ink leading-none">
+        {/* ---- Page header: title + language pair (voice's own, independent of live) ---- */}
+        <div className="flex items-end justify-between gap-x-4 gap-y-3 shrink-0 flex-wrap">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-ink leading-none shrink-0 self-center">
             {t("voice.title")}
           </h1>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-end gap-3 flex-wrap">
+            {/* Voice-message language pair (own setting, not the live pair). */}
+            <div className="flex items-end gap-2">
+              <LabeledControl label={t("voice.lang.you")}>
+                <LangSelect
+                  value={voiceMyLang}
+                  onChange={(c) => void patchSettings({ voiceMyLang: c })}
+                  ariaLabel={t("voice.lang.you")}
+                  tone="out"
+                />
+              </LabeledControl>
+              <SwapButton onPress={handleSwapVoiceLangs} ariaLabel={t("voice.lang.swap")} />
+              <LabeledControl label={t("voice.lang.peer")}>
+                <LangSelect
+                  value={voicePeerLang}
+                  onChange={(c) => void patchSettings({ voicePeerLang: c })}
+                  ariaLabel={t("voice.lang.peer")}
+                  tone="in"
+                />
+              </LabeledControl>
+            </div>
+
             {isRecording && (
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 h-9 self-center">
                 <span className="font-mono text-emphasis text-ink tabular-nums">
                   {formatRecordingTime(recordingSecs)}
                 </span>
@@ -243,7 +264,7 @@ export function VoiceScreen() {
               </div>
             )}
             {/* Record FAB */}
-            <div className="relative">
+            <div className="relative shrink-0">
               {isRecording && (
                 <span className="absolute inset-0 rounded-full bg-tangerine/40 lt-ring" />
               )}
@@ -256,40 +277,20 @@ export function VoiceScreen() {
                 aria-label={
                   isRecording ? t("voice.stopButton") : t("voice.recordButton")
                 }
-                className={`lt-press relative flex items-center justify-center w-14 h-14 rounded-full text-white lt-card ${
+                className={`lt-press relative flex items-center justify-center w-12 h-12 rounded-full text-white lt-card ${
                   isRecording
                     ? "bg-tangerine hover:bg-tangerine-deep"
                     : "bg-cobalt hover:bg-cobalt-deep lt-glow"
                 }`}
               >
-                {isRecording ? <IconStopSquare size={22} /> : <IconMic size={22} />}
+                {isRecording ? <IconStopSquare size={20} /> : <IconMic size={20} />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* ---- Setup strip: language pair · output voice · mic (independent of live) ---- */}
+        {/* ---- Setup strip: output voice · mic (independent of live) ---- */}
         <div className="flex items-end gap-x-3 gap-y-3 flex-wrap shrink-0">
-          <div className="flex items-end gap-2">
-            <LabeledControl label={t("voice.lang.you")}>
-              <LangSelect
-                value={voiceMyLang}
-                onChange={(c) => void patchSettings({ voiceMyLang: c })}
-                ariaLabel={t("voice.lang.you")}
-                tone="out"
-              />
-            </LabeledControl>
-            <SwapButton onPress={handleSwapVoiceLangs} ariaLabel={t("voice.lang.swap")} />
-            <LabeledControl label={t("voice.lang.peer")}>
-              <LangSelect
-                value={voicePeerLang}
-                onChange={(c) => void patchSettings({ voicePeerLang: c })}
-                ariaLabel={t("voice.lang.peer")}
-                tone="in"
-              />
-            </LabeledControl>
-          </div>
-
           <LabeledControl label={t("voice.voiceLabel")}>
             <TtsVoiceSelect />
           </LabeledControl>
