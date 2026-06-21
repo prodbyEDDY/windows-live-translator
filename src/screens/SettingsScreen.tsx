@@ -539,7 +539,7 @@ export function SettingsScreen() {
           </Field>
 
           <p className="text-label text-muted font-mono">
-            {t("settings.app.version")} 0.4.0
+            {t("settings.app.version")} 0.5.0
           </p>
         </SettingsCard>
       </div>
